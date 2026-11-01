@@ -1,0 +1,72 @@
+name: Windows CI
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-test:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+      DOTNET_NOLOGO: '1'
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up .NET SDK
+        uses: actions/setup-dotnet@a98b56852c35b8e3190ac28c8c2271da59106c68 # v6.0.0
+        with:
+          global-json-file: global.json
+
+      - name: Set up Node.js
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+          package-manager-cache: false
+
+      # These console projects test geometry/state with fixtures, without native input.
+      - name: Test interaction logic
+        run: |
+          foreach ($project in 'tests/GlassInteraction/GlassInteraction.csproj', 'tests/ProviderTabs/ProviderTabs.csproj') {
+            dotnet run --project $project --configuration Release
+            if ($LASTEXITCODE -ne 0) { throw "Interaction checks failed: $project" }
+          }
+
+      - name: Test Claude bridge fixtures
+        run: node --test tests/claude-bridge.test.mjs
+
+      # Publishes both processes, validates XAML/assets and runs Probe --self-test.
+      # Do not launch the desktop app or connect to a real client in CI.
+      - name: Publish and self-test Windows x64 payload
+        run: |
+          .\build.ps1 -Dotnet (Get-Command dotnet).Source
+          foreach ($file in 'VitroHUD.exe', 'VitroHUD.dll') {
+            if (-not (Test-Path -LiteralPath (Join-Path 'artifacts/VitroHUD' $file) -PathType Leaf)) {
+              throw "Missing desktop output: $file"
+            }
+          }
+
+      - name: Upload checked build
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: VitroHUD-win-x64-${{ github.sha }}
+          path: artifacts/VitroHUD/
+          if-no-files-found: error
+          retention-days: 7
+          include-hidden-files: false

@@ -1,0 +1,28 @@
+name: 问题反馈
+description: 提供可复现的步骤和脱敏环境信息
+title: "[Bug] "
+body:
+  - type: markdown
+    attributes:
+      value: "请勿上传真实会话正文、UUID、连接配置、凭据或个人桌面截图。安全问题请先阅读 SECURITY.md。"
+  - type: input
+    id: environment
+    attributes:
+      label: 环境与版本
+      description: Windows 版本、VitroHUD 版本或提交、客户端版本及模式
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 说明是否最小化、是否已有草稿；用人工构造的内容复现
+    validations:
+      required: true
+  - type: textarea
+    id: behavior
+    attributes:
+      label: 预期与实际结果
+      description: 注明只读失败、提交被拒绝、结果待确认或原客户端上游错误
+    validations:
+      required: true

@@ -1,0 +1,48 @@
+# 兼容性与验证范围
+
+VitroHUD 当前版本为 `0.1.17` Public Beta。本页区分历史客户端实测与可重复运行的自动检查；自动检查通过不代表任意客户端版本都可用。
+
+## 最近一轮三客户端实测
+
+日期：2026-11-01；适配版本：`0.1.8`。后续版本主要调整玻璃外观与窗口交互，尚未重新完成全量客户端兼容性验收。
+
+| 客户端与已测版本 | 已观察到的结果 | 限制 |
+| --- | --- | --- |
+| Claude Code `4.4212.0.0` | 原窗口最小化、DevTools 关闭后继续读取；单次多行提交并收到助手回答；模型和推理等级切换后回读一致 | 仅 Code 模式；首次需运行连接脚本，客户端重载后需重连；Cowork、普通聊天和停止生成未完成验收 |
+| ChatGPT / Codex `26.1027.3384.0` | 原窗口最小化后读取、单次提交及新助手回答通过；模型与推理等级切换通过；切换原客户端页面后保持固定订阅 | 仅 Codex 模式；依赖原生命名管道、安装路径及会话所有者校验；普通 ChatGPT 聊天和停止生成未接入 |
+| DeepSeek Harness `0.2.1-rc.3` | 最小化读取、模型与推理等级切换通过；多行提交保留空行和缩进；原草稿保护通过 | 上游返回 `TRANSPORT / Connection error`，本轮没有新助手回答，不计为完整双向收发通过；停止生成未完成验收 |
+
+实测保护项包括：错误来源的写入被拒绝；原客户端已有草稿时拒绝覆盖；结果不明时保留侧栏草稿且不自动重发。完整断线恢复、附件、所有账户组合和未来客户端版本未获兼容性保证。
+
+## 可重复的自动检查
+
+在 Windows 上从项目根目录运行：
+
+```powershell
+dotnet run --project tests/GlassInteraction/GlassInteraction.csproj -c Release
+dotnet run --project tests/ProviderTabs/ProviderTabs.csproj -c Release
+node --test tests/claude-bridge.test.mjs
+.\build.ps1 -Dotnet (Get-Command dotnet).Source
+```
+
+| 检查 | 覆盖内容 | 边界 |
+| --- | --- | --- |
+| GlassInteraction | 拉手与胶囊拖动、吸附、取消、圆角、动画时间线和配置解析 | 纯逻辑断言，不判断实际桌面动画手感或多屏 DPI |
+| ProviderTabs | 旧标签交互状态机回归 | 保留历史逻辑覆盖；当前界面使用侧边入口 |
+| Claude bridge | 内存模拟的会话路由、原草稿、忙碌状态、Nonce、过期请求、单次发送回执、模型回读和监听清理 | 不连接真实 Claude，也不向真实会话发送 |
+| Probe self-test | 来源、协议、路径、端口归属、配置迁移和格式解析守卫 | 构建脚本自动运行；使用测试数据、临时目录及回环监听器 |
+
+页面解析器另有浏览器样例，可生成后手动打开：
+
+```powershell
+node tests/build-format-fixtures.cjs
+# 在浏览器打开生成的 tests/format-fixtures.html，检查汇总结果。
+```
+
+生成 HTML 不进入源码提交。样例使用人工构造的页面及消息，不需登录任何官方客户端。它不替代真实客户端验收。
+
+## 手动验收与反馈
+
+先以专用测试会话核对来源和只读连接，再执行已获授权的单次写入。记录客户端版本、模式、窗口状态、原草稿保护、原客户端回执及是否收到回答；结果不确定时停止并保留草稿。
+
+公开反馈只提供脱敏结果，不上传会话正文、连接文件、真实 UUID、私有工作区路径或个人桌面截图。界面检查项目见 [design-qa.md](design-qa.md)，贡献流程见 [CONTRIBUTING.md](CONTRIBUTING.md)。

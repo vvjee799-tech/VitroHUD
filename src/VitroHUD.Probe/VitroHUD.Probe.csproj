@@ -1,0 +1,7 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework><UseWPF>true</UseWPF><AssemblyName>VitroHUD.Probe</AssemblyName><Product>VitroHUD</Product><ApplicationIcon>../../assets/VitroHUD.ico</ApplicationIcon></PropertyGroup>
+  <ItemGroup><Compile Include="../Shared/Contracts.cs" Link="Contracts.cs" /><Compile Include="../Shared/DraftStore.cs" Link="DraftStore.cs" /><Compile Include="../Shared/ClientActivation.cs" Link="ClientActivation.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../Shared/AppPaths.cs" Link="AppPaths.cs" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="PageScript.js" LogicalName="VitroHUD.Probe.PageScript.js" /></ItemGroup>
+  <ItemGroup><EmbeddedResource Include="ClaudeBridge.js" LogicalName="VitroHUD.Probe.ClaudeBridge.js" /></ItemGroup>
+</Project>

@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType><TargetFramework>net10.0-windows10.0.19041.0</TargetFramework><TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <RootNamespace>VitroHUD.Desktop</RootNamespace><AssemblyName>VitroHUD</AssemblyName><ApplicationManifest>app.manifest</ApplicationManifest><ApplicationIcon>../../assets/VitroHUD.ico</ApplicationIcon><UseWinUI>true</UseWinUI>
+    <WindowsPackageType>None</WindowsPackageType><WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained><RuntimeIdentifier>win-x64</RuntimeIdentifier><Platforms>x64</Platforms><PlatformTarget>x64</PlatformTarget>
+    <EnableMsixTooling>true</EnableMsixTooling><EnableCoreMrtTooling>true</EnableCoreMrtTooling>
+    <Product>VitroHUD</Product><Title>VitroHUD</Title><Description>官方会话玻璃侧栏</Description>
+  </PropertyGroup>
+  <ItemGroup><Compile Remove="ProviderTabButton.cs;ProviderTabInteraction.cs" /></ItemGroup>
+  <ItemGroup><PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" /><PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" /><Compile Include="../Shared/Contracts.cs" Link="Contracts.cs" /><Compile Include="../Shared/DraftStore.cs" Link="DraftStore.cs" /><Compile Include="../Shared/ClientActivation.cs" Link="ClientActivation.cs" /><FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" /></ItemGroup>
+  <ItemGroup><Compile Include="../Shared/AppPaths.cs" Link="AppPaths.cs" /><Content Include="../../assets/VitroHUD.ico" Link="Assets/VitroHUD.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><Content Include="../../assets/VitroHUD.png" Link="Assets/VitroHUD.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+  <ItemGroup><Content Include="../../assets/WidgetMark.png" Link="Assets/WidgetMark.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
+  <Target Name="PublishUnpackagedXamlResources" AfterTargets="Publish">
+    <Copy SourceFiles="$(OutDir)$(AssemblyName).pri" DestinationFiles="$(PublishDir)resources.pri" />
+    <ItemGroup><CompiledViews Include="$(IntermediateOutputPath)embed\*.xbf" /></ItemGroup>
+    <Copy SourceFiles="@(CompiledViews)" DestinationFolder="$(PublishDir)" />
+  </Target>
+</Project>

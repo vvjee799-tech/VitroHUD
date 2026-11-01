@@ -1,0 +1,42 @@
+**/bin/
+**/obj/
+/artifacts/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+*.log
+*.dmp
+*.tmp
+*.bak
+
+# Credentials and local conversation bindings
+.env
+.env.*
+!.env.example
+*.pfx
+*.p12
+*.pem
+*.key
+chatgpt-connection.json
+claude-connection.json
+settings.local.json
+.vitrohud-bridge-*/
+
+# Internal investigation notes and original design inputs stay on this machine
+/planning/
+/design-qa-liquid.md
+/第一版图标.png
+
+# Per-machine live-client diagnostics; public tests use synthetic fixtures
+/tests/*.ps1
+/tests/Inspect-*.mjs
+/tests/UiaFormatting/
+/tests/format-fixtures.html
+
+# Generated packages
+*.zip
+*.7z
+*.msix
+*.msixbundle
