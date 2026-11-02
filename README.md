@@ -6,7 +6,7 @@
 
 <p><strong>把已有的官方 AI 客户端会话，优雅投射到 Windows 桌面的原生流体玻璃侧栏</strong></p>
 
-[![Version](https://img.shields.io/badge/version-0.1.18--beta-blue.svg?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.19--beta-blue.svg?style=flat-square)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20x64-0078D6.svg?style=flat-square&logo=windows)](https://www.microsoft.com/windows)
 [![Status](https://img.shields.io/badge/status-Public%20Beta-orange.svg?style=flat-square)](#compatibility)
 [![License](https://img.shields.io/badge/license-MIT-4d7754.svg?style=flat-square)](LICENSE)
@@ -39,9 +39,9 @@ VitroHUD 是独立的社区开源项目，与 Anthropic、OpenAI、DeepSeek 及 
 
 它采用纯本机进程桥接技术，直接连接宿主机上已经登录、正在运行的官方桌面客户端。**不走任何第三方中间代理服务器，不伪造任何身份，不调用模型收费 API**。它将现有会话以轻量、通透的玻璃侧栏悬浮于屏幕边缘。即便原客户端最小化或退入后台，依然可以在 VitroHUD 中实时查看消息流、换行输入、无损保留缩进、切换模型并调整深度思考（Effort）等级。
 
-> ⚠️ **测试版状态说明（Beta 0.1.18）**
+> ⚠️ **测试版状态说明（Beta 0.1.19）**
 >
-> 当前版本处于活跃迭代的 Public Beta 阶段，尚未达到稳定版验收标准。`0.1.18` 不按客户端发布版本号限制连接，启动后自动发现安装路径，连接后按实际能力启用功能；客户端内部接口发生变化时仍可能需要更新适配。最新全量客户端实测来自 `0.1.8`，`0.1.17` 补测了 DeepSeek 最小化后的单次双向收发，`0.1.18` 的验证范围见 [capability-tests.md](capability-tests.md)。
+> 当前版本处于活跃迭代的 Public Beta 阶段，尚未达到稳定版验收标准。启动后自动发现安装路径，不按客户端发布版本号限制连接，连接后按实际能力启用功能；客户端内部接口发生变化时仍可能需要更新适配。最新全量客户端实测来自 `0.1.8`；`0.1.19` 补测了 DeepSeek 单次收发、提交提示、日志导出和字号保存，验证范围见 [capability-tests.md](capability-tests.md)。
 
 ---
 
@@ -330,6 +330,12 @@ VitroHUD 启动后会自动查找运行中的客户端、安装登记、常见�
 ---
 
 ### 第三步：日常操作、快捷手势与窗口控制
+
+发送后，客户端确认接收时，输入框上方会保留“已提交客户端”。“提交结果待确认”表示尚未确认结果，请核对原客户端，VitroHUD 不会自动重发。该提示只代表提交回执，助手是否回复仍以原会话为准。
+
+在外观设置中使用“会话文字大小”滑块，可在 12–28 px 之间实时调整正文与输入框，并自动保存。通过“窗口与连接 → 运行日志”查看最近记录、打开日志目录或导出 ZIP；每次操作的请求编号用于关联桌面层和探测进程。日志位于 `%LOCALAPPDATA%\VitroHUD\Logs`，只保留脱敏的状态、阶段、错误代码、异常类型及客户端版本/安装路径摘要，不保存聊天正文、草稿、凭据或完整路径；保留最近 7 天，最多 20 文件 / 20 MB。
+
+右上角的 28 px 图标可随时切换“纯净模式”，状态自动保存。开启后只显示会话内容、输入框和这个开关，标题、状态、模型栏、角色名、时间、复制按钮及发送箭头均隐藏；Enter 发送、Shift+Enter 换行，草稿保留。需要停止生成、查看提交提示/错误或使用设置时，先点同一图标退出纯净模式。
 
 | 操作分类 | 快捷操作 / 手势 | 行为说明 |
 | :--- | :--- | :--- |
@@ -625,7 +631,7 @@ VitroHUD 奉行**本地优先（Local-First）与最小暴露原则**，不维�
 | `%LOCALAPPDATA%\VitroHUD\chatgpt-connection.json` | 当前绑定的 Codex 专属会话 UUID | 中。仅含会话 ID，不含聊天正文 |
 | `%LOCALAPPDATA%\VitroHUD\claude-connection.json` | 当前绑定的 Claude 会话 ID、本地工作区路径及临时 Nonce | 中。包含本地工作区绝对路径 |
 | 用户工作区 `\.vitrohud-bridge-*` | Claude 临时请求与响应中间文件 | **即用即焚**。通信消费后立即置空 |
-| `%TEMP%\VitroHUD-error.log` | 桌面层与子进程异常调用栈日志 | 仅在崩溃排查时使用，提交 Issue 时请脱敏 |
+| `%LOCALAPPDATA%\VitroHUD\Logs` | 桌面与探测进程的连接状态、提交阶段及错误代码 | 从“窗口与连接 → 运行日志”查看或导出；不记录正文、草稿、凭据、原始错误文本或完整路径 |
 
 > [!IMPORTANT]
 > **安全声明**：VitroHUD 绝不会向外部网络发送您的会话内容、模型输出或系统隐私；向 GitHub 提交 Issue 或日志时，请注意检查并剔除包含个人目录或会话 ID 的文本。

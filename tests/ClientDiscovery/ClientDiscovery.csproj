@@ -6,6 +6,7 @@
     <Compile Include="../../src/Shared/ClientPageIdentity.cs" Link="ClientPageIdentity.cs" />
     <Compile Include="../../src/Shared/AppPaths.cs" Link="AppPaths.cs" />
     <Compile Include="../../src/Shared/Contracts.cs" Link="Contracts.cs" />
+    <Compile Include="../../src/Shared/Diagnostics.cs" Link="Diagnostics.cs" />
     <ProjectReference Include="FixtureClient/FixtureClient.csproj" ReferenceOutputAssembly="false" />
   </ItemGroup>
   <Target Name="CopyFixtureExecutable" AfterTargets="Build">

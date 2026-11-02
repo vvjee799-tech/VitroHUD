@@ -23,6 +23,7 @@ public sealed partial class MainWindow : Window
     private readonly Dictionary<string, BridgeReply> latest = [];
     private readonly HashSet<string> readingInactive = [];
     private readonly DraftStore drafts = new();
+    private readonly SubmissionReceipts receipts = new();
     private readonly Dictionary<string, (string Digest, StackPanel View)> rendered = [];
     private readonly Dictionary<string, bool> reasoningExpanded = [];
     private SourceSnapshot? snapshot;
@@ -77,7 +78,7 @@ public sealed partial class MainWindow : Window
         var host = 1; NativeWindow.DwmSetWindowAttribute(hwnd, 17, ref host, sizeof(int));
         glass.Attach(hwnd); SystemBackdrop = glass;
         Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated) { CancelClientGesture(); CancelCompactDrag(); } DispatcherQueue.TryEnqueue(SyncWindowGeometry); };
-        TransparencySlider.Value = settings.Transparency; FrostingSlider.Value = settings.Frosting; EdgeHighlightSlider.Value = settings.EdgeHighlight; CornerRadiusSlider.Value = settings.CornerRadius; TopmostSwitch.IsOn = settings.AlwaysOnTop; ForegroundInputSwitch.IsOn = settings.AllowForegroundInput;
+        TransparencySlider.Value = settings.Transparency; FrostingSlider.Value = settings.Frosting; EdgeHighlightSlider.Value = settings.EdgeHighlight; CornerRadiusSlider.Value = settings.CornerRadius; TextSizeSlider.Value = settings.TextSize; TopmostSwitch.IsOn = settings.AlwaysOnTop; ForegroundInputSwitch.IsOn = settings.AllowForegroundInput;
         NativeWindow.Topmost(hwnd, settings.AlwaysOnTop);
         if (!NativeWindow.RegisterHotKey(hwnd, 72, 0x4003, 0x47))
         {
@@ -103,7 +104,7 @@ public sealed partial class MainWindow : Window
         };
         Root.PreviewKeyDown += (_, e) => { if (e.Key == VirtualKey.Escape) { if (compactDrag.Pressed) CancelCompactDrag(); else if (clientPlacement.Pressed) CancelClientGesture(); else if (clientMenuOpen) clientFlyout?.Hide(); else Collapse(); e.Handled = true; } };
         Root.SizeChanged += (_, _) => SyncInputRegions();
-        Root.Loaded += async (_, _) => { ready = true; LayoutClientHandle(); SyncWindowGeometry(); UpdateClientHandle(); ApplyAppearance(); timer.Start(); _ = Task.Run(BackgroundLauncher.DiscoverInstalledClients); await PollAsync(); };
+        Root.Loaded += async (_, _) => { ready = true; LayoutClientHandle(); SyncWindowGeometry(); UpdateClientHandle(); ApplyAppearance(); ApplyTextSize(); ApplyPureMode(); timer.Start(); _ = Task.Run(BackgroundLauncher.DiscoverInstalledClients); await PollAsync(); };
         Closed += (_, _) => { StopCompactAnimation(); StopClientHandle(); ready = false; timer.Stop(); saveTimer.Stop(); noticeTimer.Stop(); SaveSettings(); SystemBackdrop = null; tray.Dispose(); applicationIcon.Dispose(); NativeWindow.UnregisterHotKey(hwnd, 72); NativeWindow.RemoveWindowSubclass(hwnd, subclass, 1); foreach (var b in brokers.Values) b.Dispose(); };
     }
     private BrokerClient Broker => brokers.TryGetValue(settings.Provider, out var b) ? b : brokers[settings.Provider] = new(settings.Provider);
@@ -153,12 +154,13 @@ public sealed partial class MainWindow : Window
                 else snapshot = next;
                 ConversationTitle.Text = string.IsNullOrWhiteSpace(next.Title) ? "连接官方会话" : next.Title;
                 SourceStatus.Text = settings.Provider + " · " + next.Detail;
+                RenderSubmissionReceipt();
                 RenderModel(next.Model);
                 ModelButton.IsEnabled = next.Capabilities.CanSelectModel;
                 SendButton.IsEnabled = next.IsGenerating ? next.Capabilities.CanStop : next.Capabilities.CanSend && !string.IsNullOrWhiteSpace(Composer.Text);
                 RenderSendIcon(next.IsGenerating);
                 Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(SendButton, next.IsGenerating ? "停止生成" : "发送到原会话");
-                EmptyState.Visibility = next.Messages.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
+                EmptyState.Visibility = !settings.PureMode && next.Messages.Count == 0 ? Visibility.Visible : Visibility.Collapsed;
                 EmptyTitle.Text = next.Status == "unrecognized" ? "等待打开会话" : "打开一段官方会话";
                 EmptyDetail.Text = next.Detail;
                 if (newSource) following = true;
@@ -195,15 +197,16 @@ public sealed partial class MainWindow : Window
     }
     private void RenderMessages(SourceSnapshot source)
     {
-        var digest = Wire.Hash(source.SourceKey + JsonSerializer.Serialize(source.Messages, Wire.Json));
+        var digest = Wire.Hash(source.SourceKey + settings.TextSize + settings.PureMode + JsonSerializer.Serialize(source.Messages, Wire.Json));
         if (digest == lastDigest) return; lastDigest = digest;
         var shouldFollow = following;
         var visibleKeys = new HashSet<string>();
-        for (var messageIndex = 0; messageIndex < source.Messages.Count; messageIndex++)
+        var messages = settings.PureMode ? source.Messages.Where(m => m.Parts is not { Count: > 0 } || m.Parts.Any(IsContentPart)).ToList() : source.Messages;
+        for (var messageIndex = 0; messageIndex < messages.Count; messageIndex++)
         {
-            var message = source.Messages[messageIndex];
+            var message = messages[messageIndex];
             var messageKey = source.SourceKey + ":" + message.Id;
-            var messageDigest = Wire.Hash(JsonSerializer.Serialize(message, Wire.Json));
+            var messageDigest = Wire.Hash(settings.TextSize + settings.PureMode.ToString() + JsonSerializer.Serialize(message, Wire.Json));
             visibleKeys.Add(messageKey);
             if (rendered.TryGetValue(messageKey, out var existing) && existing.Digest == messageDigest)
             {
@@ -232,25 +235,29 @@ public sealed partial class MainWindow : Window
                 Grid.SetColumn(surface, 1); alignment.Children.Add(surface); block.Children.Add(alignment);
             }
             else block.Children.Add(surface);
-            var heading = new Grid(); heading.ColumnDefinitions.Add(new()); heading.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-            var label = new TextBlock { Text = ownMessage ? "我" : assistantMessage ? source.Provider : "官方会话 · 已加载内容", FontSize = 15, HorizontalAlignment = ownMessage ? HorizontalAlignment.Right : HorizontalAlignment.Left, Foreground = (Brush)Root.Resources[assistantMessage ? "AccentTextBrush" : "SecondaryTextBrush"] };
-            heading.Children.Add(label);
-            var copy = new Button { Content = new SymbolIcon(Symbol.Copy), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0), Padding = new Thickness(5), MinHeight = 20, Opacity = 0 };
-            var hovering = false;
-            block.PointerEntered += (_, _) => { hovering = true; copy.Opacity = 1; };
-            block.PointerExited += (_, _) => { hovering = false; if (copy.FocusState == FocusState.Unfocused) copy.Opacity = 0; };
-            copy.GotFocus += (_, _) => copy.Opacity = 1;
-            copy.LostFocus += (_, _) => { if (!hovering) copy.Opacity = 0; };
-            Grid.SetColumn(copy, 1); heading.Children.Add(copy); ToolTipService.SetToolTip(copy, "复制这段内容");
-            Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(copy, "复制这段内容");
-            copy.Click += (_, _) => { var package = new DataPackage(); package.SetText(message.Text); Clipboard.SetContent(package); };
-            contents.Children.Add(heading);
+            if (!settings.PureMode)
+            {
+                var heading = new Grid(); heading.ColumnDefinitions.Add(new()); heading.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+                var label = new TextBlock { Text = ownMessage ? "我" : assistantMessage ? source.Provider : "官方会话 · 已加载内容", FontSize = 15, HorizontalAlignment = ownMessage ? HorizontalAlignment.Right : HorizontalAlignment.Left, Foreground = (Brush)Root.Resources[assistantMessage ? "AccentTextBrush" : "SecondaryTextBrush"] };
+                heading.Children.Add(label);
+                var copy = new Button { Content = new SymbolIcon(Symbol.Copy), Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0), Padding = new Thickness(5), MinHeight = 20, Opacity = 0 };
+                var hovering = false;
+                block.PointerEntered += (_, _) => { hovering = true; copy.Opacity = 1; };
+                block.PointerExited += (_, _) => { hovering = false; if (copy.FocusState == FocusState.Unfocused) copy.Opacity = 0; };
+                copy.GotFocus += (_, _) => copy.Opacity = 1;
+                copy.LostFocus += (_, _) => { if (!hovering) copy.Opacity = 0; };
+                Grid.SetColumn(copy, 1); heading.Children.Add(copy); ToolTipService.SetToolTip(copy, "复制这段内容");
+                Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(copy, "复制这段内容");
+                copy.Click += (_, _) => { var package = new DataPackage(); package.SetText(message.Text); Clipboard.SetContent(package); };
+                contents.Children.Add(heading);
+            }
             var parts = message.Parts is { Count: > 0 } ? message.Parts : [new MessagePart("body", message.Text)];
             for (var partIndex = 0; partIndex < parts.Count; partIndex++)
             {
                 var part = parts[partIndex];
-                var text = TranscriptRenderer.RenderPart(part, Root.Resources);
-                if (part.Kind == "reasoning")
+                if (settings.PureMode && !IsContentPart(part)) continue;
+                var text = TranscriptRenderer.RenderPart(part, Root.Resources, settings.TextSize, settings.PureMode);
+                if (part.Kind == "reasoning" && !settings.PureMode)
                 {
                     var key = messageKey + ":" + partIndex;
                     var expander = new Expander { Header = "思考过程", Content = new Border { BorderBrush = new SolidColorBrush(Color.FromArgb(90, 196, 220, 183)), BorderThickness = new Thickness(1, 0, 0, 0), Padding = new Thickness(12, 2, 0, 2), Child = text }, Background = new SolidColorBrush(Colors.Transparent), BorderThickness = new Thickness(0), FontSize = 13, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, IsExpanded = reasoningExpanded.GetValueOrDefault(key) };
@@ -263,10 +270,10 @@ public sealed partial class MainWindow : Window
             rendered[messageKey] = (messageDigest, block);
             PlaceMessage(block, messageIndex);
         }
-        while (MessagesPanel.Children.Count > source.Messages.Count) MessagesPanel.Children.RemoveAt(MessagesPanel.Children.Count - 1);
+        while (MessagesPanel.Children.Count > messages.Count) MessagesPanel.Children.RemoveAt(MessagesPanel.Children.Count - 1);
         foreach (var key in rendered.Keys.Where(k => !visibleKeys.Contains(k)).ToArray()) rendered.Remove(key);
         if (shouldFollow) DispatcherQueue.TryEnqueue(ScrollToLatest);
-        else NewContentButton.Visibility = Visibility.Visible;
+        else NewContentButton.Visibility = settings.PureMode ? Visibility.Collapsed : Visibility.Visible;
     }
     private void PlaceMessage(StackPanel block, int index)
     {
@@ -284,7 +291,7 @@ public sealed partial class MainWindow : Window
         drafts.Put(settings.Provider, snapshot?.SourceKey, Composer.Text); settings.Provider = provider; pinned = false; PinButton.IsChecked = false; snapshot = null; lastDigest = "";
         ModelText.Text = "正在读取模型…"; ModelButton.IsEnabled = false; Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(ModelButton, "正在读取模型"); SendButton.IsEnabled = false; RenderSendIcon(false);
         changingDraft = true; Composer.Text = drafts.Get(provider, null); changingDraft = false;
-        MessagesPanel.Children.Clear(); EmptyState.Visibility = Visibility.Visible; ConversationTitle.Text = "连接官方会话"; SourceStatus.Text = settings.Provider + " · 正在寻找客户端…"; UpdateClientHandle(); ScheduleSave();
+        MessagesPanel.Children.Clear(); EmptyState.Visibility = settings.PureMode ? Visibility.Collapsed : Visibility.Visible; ConversationTitle.Text = "连接官方会话"; SourceStatus.Text = settings.Provider + " · 正在寻找客户端…"; RenderSubmissionReceipt(); UpdateClientHandle(); ScheduleSave();
         if (latest.TryGetValue(provider, out var cached)) await PollAsync(cached);
         await PollAsync();
     }
@@ -297,15 +304,26 @@ public sealed partial class MainWindow : Window
         if (!source.IsGenerating && string.IsNullOrWhiteSpace(text)) return;
         sending = true; SendButton.IsEnabled = false;
         var broker = Broker;
+        var trace = source.IsGenerating ? Guid.NewGuid().ToString("N") : receipts.Begin(source.Provider, source.SourceKey);
+        RenderSubmissionReceipt();
         try
         {
-            var reply = await broker.RequestAsync(new(source.IsGenerating ? "stop" : "send", source.SourceKey, text, AllowForegroundInput: settings.AllowForegroundInput, OriginWindow: hwnd));
+            var reply = await broker.RequestAsync(new(source.IsGenerating ? "stop" : "send", source.SourceKey, text, AllowForegroundInput: settings.AllowForegroundInput, OriginWindow: hwnd, TraceId: trace));
+            if (!source.IsGenerating) receipts.Complete(source.Provider, source.SourceKey, trace, reply);
             if (reply.Ok && !source.IsGenerating)
             {
                 drafts.Acknowledge(source.Provider, source.SourceKey, text);
                 if (settings.Provider == source.Provider && snapshot?.SourceKey == source.SourceKey && Composer.Text == text) Composer.Text = "";
             }
-            ShowNotice(reply.Ok ? source.IsGenerating ? "已请求停止原客户端生成" : "已提交至原客户端" : reply.Error, reply.Ok ? InfoBarSeverity.Informational : InfoBarSeverity.Warning);
+            if (!reply.Ok || source.IsGenerating) ShowNotice(reply.Ok ? "已请求停止原客户端生成" : reply.Error, reply.Ok ? InfoBarSeverity.Informational : InfoBarSeverity.Warning);
+            else Notice.IsOpen = false;
+            RenderSubmissionReceipt();
+        }
+        catch (Exception ex)
+        {
+            DiagnosticLog.Write(LogEvent.AppError, source.Provider, source.IsGenerating ? "stop" : "send", ResultCode.SubmissionUnknown, trace, source.SourceKey, exception: ex);
+            if (!source.IsGenerating) receipts.Complete(source.Provider, source.SourceKey, trace, new(false, Code: nameof(ResultCode.SubmissionUnknown)));
+            RenderSubmissionReceipt(); ShowNotice("提交结果待确认，请检查客户端与运行日志；不会自动重发。", InfoBarSeverity.Warning);
         }
         finally { sending = false; await PollAsync(); }
     }
@@ -366,7 +384,7 @@ public sealed partial class MainWindow : Window
         finally { scrollingToLatest = false; }
     }
     private void ScrollToBottom_Click(object sender, RoutedEventArgs e) => ScrollToLatest();
-    private void Appearance_Click(object sender, RoutedEventArgs e) { ApplyAppearance(); Root.ContextFlyout.ShowAt(Root); }
+    private void Appearance_Click(object sender, RoutedEventArgs e) { ApplyAppearance(); Root.ContextFlyout?.ShowAt(Root); }
     private void Appearance_Changed(object sender, RangeBaseValueChangedEventArgs e) { if (!ready) return; settings.Transparency = TransparencySlider.Value; settings.Frosting = FrostingSlider.Value; settings.EdgeHighlight = EdgeHighlightSlider.Value; settings.CornerRadius = CornerRadiusSlider.Value; ApplyAppearance(); ScheduleSave(); }
     private void ApplyAppearance()
     {
@@ -395,12 +413,12 @@ public sealed partial class MainWindow : Window
         SetBrush("FloatingSurfaceBrush", light ? Color.FromArgb(235, 255, 255, 255) : Color.FromArgb(80, 37, 44, 47));
     }
     private void SetBrush(string name, Color color) => ((SolidColorBrush)Root.Resources[name]).Color = color;
-    private void Reset_Click(object sender, RoutedEventArgs e) { TransparencySlider.Value = 70; FrostingSlider.Value = 45; EdgeHighlightSlider.Value = 60; CornerRadiusSlider.Value = AppearanceSettings.DefaultCornerRadius; }
+    private void Reset_Click(object sender, RoutedEventArgs e) { TransparencySlider.Value = 70; FrostingSlider.Value = 45; EdgeHighlightSlider.Value = 60; CornerRadiusSlider.Value = AppearanceSettings.DefaultCornerRadius; TextSizeSlider.Value = AppearanceSettings.DefaultTextSize; }
     private void Topmost_Toggled(object sender, RoutedEventArgs e) { if (!ready) return; settings.AlwaysOnTop = TopmostSwitch.IsOn; NativeWindow.Topmost(hwnd, collapsed || settings.AlwaysOnTop); ScheduleSave(); }
     private void ForegroundInput_Toggled(object sender, RoutedEventArgs e) { if (!ready) return; settings.AllowForegroundInput = ForegroundInputSwitch.IsOn; ScheduleSave(); }
     private async void BackgroundConnection_Click(object sender, RoutedEventArgs e)
     {
-        Root.ContextFlyout.Hide();
+        Root.ContextFlyout?.Hide();
         var provider = settings.Provider;
         if (provider == "ChatGPT")
         {
@@ -479,9 +497,9 @@ public sealed partial class MainWindow : Window
         if (path == null) { ShowNotice("客户端主程序已移动或不可访问。请正常打开一次客户端，侧栏会重新识别路径。", InfoBarSeverity.Warning); return; }
         if (BackgroundLauncher.IsRunning(path)) { ShowNotice("原客户端仍在运行，请先从其菜单退出，再连接后台会话。", InfoBarSeverity.Warning); return; }
         try { BackgroundLauncher.Start(path); ShowNotice("正在连接后台会话，请在原客户端打开目标会话。", InfoBarSeverity.Informational); }
-        catch { ShowNotice("已识别客户端，但未能启动后台模式。请确认原客户端已完全退出且主程序可以运行。", InfoBarSeverity.Warning); }
+        catch (Exception ex) { DiagnosticLog.Write(LogEvent.ClientLaunchFailed, provider: settings.Provider, exception: ex); ShowNotice("已识别客户端，但未能启动后台模式。请确认原客户端已完全退出且主程序可以运行。", InfoBarSeverity.Warning); }
     }
-    private void ClickThrough_Click(object sender, RoutedEventArgs e) { Root.ContextFlyout.Hide(); NativeWindow.PassThrough(hwnd, true); }
+    private void ClickThrough_Click(object sender, RoutedEventArgs e) { Root.ContextFlyout?.Hide(); NativeWindow.PassThrough(hwnd, true); }
     private void Collapse_Click(object sender, RoutedEventArgs e) => Collapse();
     private void SyncWindowGeometry()
     {
@@ -490,7 +508,7 @@ public sealed partial class MainWindow : Window
         var radius = GlassMotion.Lerp(settings.CornerRadius, 22, compactProgress);
         TintLayer.CornerRadius = ShellRim.CornerRadius = OuterHighlight.CornerRadius = new CornerRadius(radius);
         InnerHighlight.CornerRadius = new CornerRadius(Math.Max(0, radius - 1.5));
-        var points = collapsed || compactAnimating || clientUsesPreview ? null : clientOutline;
+        var points = collapsed || compactAnimating || settings.PureMode || clientUsesPreview ? null : clientOutline;
         var scale = NativeWindow.GetDpiForWindow(hwnd);
         roundedRegion.Update(hwnd, AppWindow.Size.Width, AppWindow.Size.Height, scale, inset, radius, points);
         glass.SetContour(inset, radius, points); SyncInputRegions(); glass.Sync();
@@ -537,7 +555,7 @@ public sealed partial class MainWindow : Window
         var edge = disabled ? 0 : Math.Max(5, (int)Math.Round(6 * scale));
         var gutter = (int)Math.Round(ClientHandlePlacement.Gutter * scale);
         var cutY = (int)Math.Round(clientY * scale);
-        var side = clientConnection > .01 ? (clientX < Root.ActualWidth / 2 ? -1 : 1) : 0;
+        var side = !settings.PureMode && clientConnection > .01 ? (clientX < Root.ActualWidth / 2 ? -1 : 1) : 0;
         var next = (width, height, edge, cutY, side);
         if (inputGeometry == next) return; inputGeometry = next;
         // Only the top handle moves the window; the heading is ordinary content.
@@ -578,7 +596,7 @@ public sealed partial class MainWindow : Window
     }
     private async void Diagnostics_Click(object sender, RoutedEventArgs e)
     {
-        Root.ContextFlyout.Hide();
+        Root.ContextFlyout?.Hide();
         var s = snapshot; var dialog = new ContentDialog { XamlRoot = Root.XamlRoot, Title = "连接状态", CloseButtonText = "关闭", Content = $"来源：{settings.Provider}\n状态：{s?.Detail ?? "等待连接"}\n会话：{s?.Title ?? "尚未绑定"}\n模型：{s?.Model ?? "未知"}\n读取：{s?.Capabilities.CanRead == true}\n发送：{s?.Capabilities.CanSend == true}\n停止：{s?.Capabilities.CanStop == true}\n模型菜单：{s?.Capabilities.CanSelectModel == true}\n\n内容范围：官方客户端已加载的会话内容\n玻璃：{glass.Mode}\n唤出快捷键：{hotkey}" };
         await dialog.ShowAsync();
     }

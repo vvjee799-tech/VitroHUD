@@ -10,6 +10,7 @@ namespace VitroHUD;
 // Installation identity and live capabilities are independent of release numbers.
 internal static class ClientDiscovery
 {
+    private static readonly HashSet<int> observed = [];
     private static string Normalize(string value) => Regex.Replace(Regex.Replace(Regex.Replace(value.ToLowerInvariant().Trim(), @"\s*\((?:x64|x86|arm64|64-bit|32-bit)\)$", ""), @"\s+v?\d+(?:\.\d+)+(?:[-+][\w.-]+)?$", ""), @"[\s._-]", "");
     internal static string[] ExecutableNames(string provider) => provider switch
     {
@@ -76,6 +77,7 @@ internal static class ClientDiscovery
             paths[provider] = path;
             File.WriteAllText(file + ".tmp", JsonSerializer.Serialize(paths));
             File.Move(file + ".tmp", file, true);
+            DiagnosticLog.Write(LogEvent.ClientDiscovered, provider, clientPath: path);
         }
         finally { if (locked) gate.ReleaseMutex(); }
     }
@@ -91,6 +93,7 @@ internal static class ClientDiscovery
             using var process = Process.GetProcessById(processId);
             var path = process.MainModule?.FileName;
             if (path == null || !IsExecutable(provider, path)) return null;
+            lock (observed) if (observed.Add(processId)) DiagnosticLog.Write(LogEvent.ClientObserved, provider, clientPath: path);
             TryRemember(provider, path);
             return path;
         }

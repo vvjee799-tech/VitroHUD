@@ -10,6 +10,7 @@
   <ItemGroup><PackageReference Include="Microsoft.WindowsAppSDK" Version="2.6.4" /><PackageReference Include="Microsoft.Graphics.Win2D" Version="1.4.0" /><Compile Include="../Shared/Contracts.cs" Link="Contracts.cs" /><Compile Include="../Shared/DraftStore.cs" Link="DraftStore.cs" /><Compile Include="../Shared/ClientActivation.cs" Link="ClientActivation.cs" /><FrameworkReference Include="Microsoft.WindowsDesktop.App.WindowsForms" /></ItemGroup>
   <ItemGroup><Compile Include="../Shared/AppPaths.cs" Link="AppPaths.cs" /><Content Include="../../assets/VitroHUD.ico" Link="Assets/VitroHUD.ico" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup><Compile Include="../Shared/ClientDiscovery.cs" Link="ClientDiscovery.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../Shared/Diagnostics.cs" Link="Diagnostics.cs" /><Compile Include="../Shared/SubmissionReceipt.cs" Link="SubmissionReceipt.cs" /></ItemGroup>
   <ItemGroup><Content Include="../../assets/VitroHUD.png" Link="Assets/VitroHUD.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
   <ItemGroup><Content Include="../../assets/WidgetMark.png" Link="Assets/WidgetMark.png" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" /></ItemGroup>
   <Target Name="PublishUnpackagedXamlResources" AfterTargets="Publish">

@@ -23,6 +23,8 @@
               <Flyout.FlyoutPresenterStyle><Style TargetType="FlyoutPresenter"><Setter Property="Background" Value="{StaticResource FloatingSurfaceBrush}"/><Setter Property="BorderBrush" Value="{StaticResource PanelStrokeBrush}"/><Setter Property="CornerRadius" Value="16"/><Setter Property="Padding" Value="20"/></Style></Flyout.FlyoutPresenterStyle>
               <ScrollViewer FontSize="16" MaxHeight="560" VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled"><StackPanel Width="310" Spacing="11">
               <TextBlock Text="玻璃外观" FontSize="22" FontWeight="SemiBold"/>
+              <Grid><TextBlock Text="会话文字大小"/><TextBlock x:Name="TextSizeValue" Text="20 px" HorizontalAlignment="Right"/></Grid>
+              <Slider x:Name="TextSizeSlider" Minimum="12" Maximum="28" Value="20" StepFrequency="1" ValueChanged="TextSize_Changed" AutomationProperties.Name="会话文字大小" AutomationProperties.HelpText="实时调整会话正文、代码、思考内容和输入框的文字大小，并自动保存"/>
               <Grid><TextBlock Text="通透度"/><TextBlock x:Name="TransparencyValue" Text="70%" HorizontalAlignment="Right"/></Grid>
               <Slider x:Name="TransparencySlider" Minimum="0" Maximum="100" Value="70" ValueChanged="Appearance_Changed" AutomationProperties.Name="通透度"/>
               <Grid><TextBlock Text="纯白底板" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11"/><TextBlock Text="更透" HorizontalAlignment="Right" Foreground="{StaticResource SecondaryTextBrush}" FontSize="11"/></Grid>
@@ -43,6 +45,7 @@
               <Button Content="进入鼠标穿透模式" HorizontalAlignment="Stretch" Click="ClickThrough_Click"/>
               <TextBlock x:Name="HotkeyHelp" Text="Ctrl+Alt+G 唤出并恢复交互" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}"/>
               <Button Content="连接状态与诊断" Style="{StaticResource QuietButton}" HorizontalAlignment="Stretch" Click="Diagnostics_Click"/>
+              <Button Content="运行日志…" Style="{StaticResource QuietButton}" HorizontalAlignment="Stretch" Click="RuntimeLog_Click"/>
               <Button Content="退出 VitroHUD" Style="{StaticResource QuietButton}" HorizontalAlignment="Stretch" Click="Exit_Click"/>
               </StackPanel></Expander>
               <Grid><TextBlock Text="自动保存" FontSize="11" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center"/><Button Content="恢复默认" HorizontalAlignment="Right" Style="{StaticResource QuietButton}" Click="Reset_Click"/></Grid>
@@ -68,8 +71,9 @@
       </Grid>
       <StackPanel Grid.Row="2" Spacing="10">
         <InfoBar x:Name="Notice" IsOpen="False" IsClosable="True" Severity="Informational"/>
+        <TextBlock x:Name="SubmissionStatus" Visibility="Collapsed" TextWrapping="Wrap" FontSize="12" Foreground="{StaticResource AccentTextBrush}" AutomationProperties.LiveSetting="Polite"/>
         <Border x:Name="ComposerShell" CornerRadius="25" BorderBrush="{StaticResource PanelStrokeBrush}" BorderThickness="1" Background="#15FFFFFF" Padding="15,7,6,7">
-          <Grid ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="38"/></Grid.ColumnDefinitions>
+          <Grid x:Name="ComposerGrid" ColumnSpacing="8"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition x:Name="SendColumn" Width="38"/></Grid.ColumnDefinitions>
             <TextBox x:Name="Composer" PlaceholderText="继续这段对话…" Background="Transparent" BorderThickness="0" Padding="0,7" FontSize="17" AcceptsReturn="True" TextWrapping="Wrap" MinHeight="36" MaxHeight="140" PreviewKeyDown="Composer_KeyDown" TextChanged="Composer_TextChanged">
               <TextBox.Resources>
                 <SolidColorBrush x:Key="TextControlBackgroundFocused" Color="Transparent"/>
@@ -93,7 +97,7 @@
             </Button>
           </Grid>
         </Border>
-        <Grid ColumnSpacing="5"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="37"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+        <Grid x:Name="ComposerToolbar" ColumnSpacing="5"><Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="37"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
           <Button x:Name="ModelButton" Grid.Column="0" Style="{StaticResource QuietButton}" BorderThickness="1" BorderBrush="{StaticResource PanelStrokeBrush}" CornerRadius="19" Padding="11,7" MinHeight="38" HorizontalAlignment="Left" HorizontalContentAlignment="Stretch" MaxWidth="250" Click="Model_Click"><Grid ColumnSpacing="7"><Grid.ColumnDefinitions><ColumnDefinition/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions><TextBlock x:Name="ModelText" Text="由客户端控制" FontSize="15" TextTrimming="CharacterEllipsis" MaxWidth="211"/><FontIcon Grid.Column="1" Glyph="&#xE70D;" FontSize="10" Foreground="{StaticResource SecondaryTextBrush}" VerticalAlignment="Center"/></Grid></Button>
           <Button x:Name="AppearanceButton" Grid.Column="1" Style="{StaticResource QuietButton}" Padding="8" Click="Appearance_Click" AutomationProperties.Name="外观设置" ToolTipService.ToolTip="玻璃外观与窗口设置"><SymbolIcon Symbol="Setting"/>
 
@@ -102,6 +106,20 @@
         </Grid>
       </StackPanel>
     </Grid>
+    <ToggleButton x:Name="PureModeButton" Width="28" Height="28" MinWidth="28" MinHeight="28" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,8,44,0"
+                  Padding="6" CornerRadius="14" BorderThickness="1" BorderBrush="{StaticResource PanelStrokeBrush}" Background="#12000000" Foreground="{StaticResource MainTextBrush}"
+                  Click="PureMode_Click" AutomationProperties.Name="开启纯净模式" ToolTipService.ToolTip="开启纯净模式">
+      <ToggleButton.Resources>
+        <SolidColorBrush x:Key="ToggleButtonBackgroundChecked" Color="#28C4DCB7"/>
+        <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPointerOver" Color="#38C4DCB7"/>
+        <SolidColorBrush x:Key="ToggleButtonBackgroundCheckedPressed" Color="#48C4DCB7"/>
+        <SolidColorBrush x:Key="ToggleButtonBorderBrushChecked" Color="#99C4DCB7"/>
+      </ToggleButton.Resources>
+      <Grid Width="14" Height="14" IsHitTestVisible="False">
+        <Path Data="M 1,5 L 1,1 L 5,1 M 9,1 L 13,1 L 13,5 M 13,9 L 13,13 L 9,13 M 5,13 L 1,13 L 1,9" Stroke="{StaticResource MainTextBrush}" StrokeThickness="1.2"/>
+        <Ellipse x:Name="PureModeDot" Width="3" Height="3" Fill="{StaticResource AccentTextBrush}" Visibility="Collapsed"/>
+      </Grid>
+    </ToggleButton>
     <local:WindowDragSurface x:Name="WindowDragHandle" Width="72" Height="24" HorizontalAlignment="Center" VerticalAlignment="Top" Margin="0,6,0,0" Background="Transparent" Opacity="0.6" ToolTipService.ToolTip="拖动窗口" AutomationProperties.Name="拖动窗口" AutomationProperties.HelpText="按住并拖动可移动窗口" PointerPressed="WindowDrag_PointerPressed" PointerMoved="WindowDrag_PointerMoved" PointerReleased="WindowDrag_PointerReleased" PointerCaptureLost="WindowDrag_PointerReleased" PointerCanceled="WindowDrag_PointerReleased">
       <Border Width="32" Height="3" CornerRadius="1.5" Background="{StaticResource MainTextBrush}" HorizontalAlignment="Center" VerticalAlignment="Center" IsHitTestVisible="False"/>
     </local:WindowDragSurface>

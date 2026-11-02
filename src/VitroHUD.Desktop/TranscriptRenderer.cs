@@ -12,12 +12,14 @@ internal static class TranscriptRenderer
 {
     private static readonly FontFamily CodeFont = new("Cascadia Mono, Consolas");
 
-    public static FrameworkElement RenderPart(MessagePart part, ResourceDictionary colors)
+    public static FrameworkElement RenderPart(MessagePart part, ResourceDictionary colors, double textSize = AppearanceSettings.DefaultTextSize, bool pure = false)
     {
         var body = part.Kind == "body";
         var reasoning = part.Kind == "reasoning";
-        var style = new TextStyle(body ? 20 : reasoning ? 14 : 12, body ? 32 : reasoning ? 23 : 19,
-            (Brush)colors[body ? "MainTextBrush" : "SecondaryTextBrush"], colors);
+        var scale = textSize / AppearanceSettings.DefaultTextSize;
+        var size = body ? textSize : reasoning ? Math.Max(11, 14 * scale) : Math.Max(10, 12 * scale);
+        var style = new TextStyle(size, Math.Max(size * 1.4, (body ? 32 : reasoning ? 23 : 19) * scale),
+            (Brush)colors[body ? "MainTextBrush" : "SecondaryTextBrush"], colors, pure);
 
         if (part.Blocks is not { Count: > 0 }) return MakeText(part.Text, style);
 
@@ -38,7 +40,7 @@ internal static class TranscriptRenderer
             {
                 "paragraph" => MakeFormattedText(block, style),
                 "heading" => MakeFormattedText(block, style, heading: true),
-                "code" => MakeCode(block, style),
+                "code" => MakeCode(block, style, pure),
                 "list-item" => MakeListItem(block, style),
                 "quote" => new Border
                 {
@@ -100,17 +102,17 @@ internal static class TranscriptRenderer
         return text;
     }
 
-    private static FrameworkElement MakeCode(FormattedBlock block, TextStyle style)
+    private static FrameworkElement MakeCode(FormattedBlock block, TextStyle style, bool pure)
     {
         var code = MakeText(block.Text, style, wrap: false);
         code.FontFamily = CodeFont;
         var content = new StackPanel { Spacing = 4, HorizontalAlignment = HorizontalAlignment.Stretch };
-        if (!string.IsNullOrWhiteSpace(block.Language))
+        if (!pure && !string.IsNullOrWhiteSpace(block.Language))
             content.Children.Add(MakeText(block.Language, style with { FontSize = 12, LineHeight = 19, Foreground = (Brush)style.Colors["SecondaryTextBrush"] }));
         content.Children.Add(new ScrollViewer
         {
             HorizontalScrollMode = ScrollMode.Enabled,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = pure ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Auto,
             VerticalScrollMode = ScrollMode.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
             HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -173,7 +175,7 @@ internal static class TranscriptRenderer
         return new ScrollViewer
         {
             HorizontalScrollMode = ScrollMode.Enabled,
-            HorizontalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = style.Pure ? ScrollBarVisibility.Hidden : ScrollBarVisibility.Auto,
             VerticalScrollMode = ScrollMode.Disabled,
             VerticalScrollBarVisibility = ScrollBarVisibility.Disabled,
             HorizontalAlignment = HorizontalAlignment.Stretch,
@@ -181,5 +183,5 @@ internal static class TranscriptRenderer
         };
     }
 
-    private readonly record struct TextStyle(double FontSize, double LineHeight, Brush Foreground, ResourceDictionary Colors);
+    private readonly record struct TextStyle(double FontSize, double LineHeight, Brush Foreground, ResourceDictionary Colors, bool Pure);
 }

@@ -4,6 +4,7 @@
   <ItemGroup><Compile Include="../Shared/AppPaths.cs" Link="AppPaths.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../Shared/ClientDiscovery.cs" Link="ClientDiscovery.cs" /></ItemGroup>
   <ItemGroup><Compile Include="../Shared/ClientPageIdentity.cs" Link="ClientPageIdentity.cs" /></ItemGroup>
+  <ItemGroup><Compile Include="../Shared/Diagnostics.cs" Link="Diagnostics.cs" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="PageScript.js" LogicalName="VitroHUD.Probe.PageScript.js" /></ItemGroup>
   <ItemGroup><EmbeddedResource Include="ClaudeBridge.js" LogicalName="VitroHUD.Probe.ClaudeBridge.js" /></ItemGroup>
 </Project>

@@ -21,6 +21,8 @@ internal static partial class Program
     private static PageBinding? backgroundBinding;
     private static VitroHUD.Probe.CodexPipe? codexPipe;
     private static string codexConversation = "";
+    private static string activeTrace = "";
+    private static string lastPageFault = "";
 
     [MTAThread]
     private static int Main(string[] args)
@@ -51,12 +53,22 @@ internal static partial class Program
         string? line;
         while ((line = Console.ReadLine()) != null)
         {
+            BridgeRequest? request = null;
             try
             {
-                var request = JsonSerializer.Deserialize<BridgeRequest>(line, Wire.Json);
-                Emit(request == null ? new(false, Error: "无效请求") : Handle(request));
+                request = JsonSerializer.Deserialize<BridgeRequest>(line, Wire.Json);
+                activeTrace = Guid.TryParseExact(request?.TraceId, "N", out _) ? request!.TraceId : Guid.NewGuid().ToString("N");
+                var reply = request == null ? new(false, Error: "无效请求", Code: nameof(ResultCode.InvalidResponse)) : Handle(request);
+                var code = ReplyResult.Code(reply);
+                if (request?.Op != "read") DiagnosticLog.Write(LogEvent.RequestFinished, Provider, request?.Op ?? "none", code, activeTrace, request?.SourceKey);
+                Emit(reply with { Code = code.ToString() });
             }
-            catch (Exception ex) { Emit(new(false, Error: SafeError(ex))); }
+            catch (Exception ex)
+            {
+                SafeError(ex);
+                Emit(new(false, Error: request?.Op == "send" ? "提交结果待确认，请检查原客户端。不会自动重发。" : "客户端暂时未响应，请重试连接", Code: (request?.Op == "send" ? ResultCode.SubmissionUnknown : ResultCode.ProbeException).ToString()));
+            }
+            finally { activeTrace = ""; }
         }
         return 0;
     }
@@ -64,6 +76,7 @@ internal static partial class Program
     private static string SafeError(Exception ex)
     {
         Console.Error.WriteLine($"{ex.GetType().Name} (0x{ex.HResult:X8})");
+        DiagnosticLog.Write(LogEvent.ProbeError, Provider, code: ResultCode.ProbeException, request: activeTrace, exception: ex);
         return ex is ElementNotAvailableException ? "客户端视图已变更，请等待重新连接" : "客户端暂时未响应，请重试连接";
     }
 
@@ -589,7 +602,24 @@ internal static partial class Program
             Capabilities = pageFailed ? new() : strong ? connected.Capabilities : new(source.Capabilities.CanRead)
         };
     }
-    private static bool PageLoadFailed(JsonElement state) => state.TryGetProperty("pageError", out var error) && error.ValueKind == JsonValueKind.True;
+    private static bool PageLoadFailed(JsonElement state)
+    {
+        var failed = state.TryGetProperty("pageError", out var error) && error.ValueKind == JsonValueKind.True;
+        if (!failed) { lastPageFault = ""; return false; }
+        var strings = 0; var objects = 0;
+        if (state.TryGetProperty("draftFormat", out var format) && format.ValueKind == JsonValueKind.Object)
+        {
+            if (format.TryGetProperty("strings", out var s)) s.TryGetInt32(out strings);
+            if (format.TryGetProperty("objects", out var o)) o.TryGetInt32(out objects);
+        }
+        var signature = $"{Provider}:{strings}:{objects}";
+        if (lastPageFault != signature)
+        {
+            lastPageFault = signature;
+            DiagnosticLog.Write(LogEvent.ClientPageError, Provider, "read", ResultCode.ClientPageFailed, activeTrace, stringDrafts: strings, objectDrafts: objects);
+        }
+        return true;
+    }
     private static bool SameWindow(PageBinding binding)
     {
         if (!IsWindow((nint)binding.Source.WindowHandle)) return false;
@@ -782,6 +812,7 @@ internal static partial class Program
             if (before.GetProperty("stop").GetBoolean()) return new(false, Error: "原客户端正在生成，请等待完成");
             if (!string.IsNullOrWhiteSpace(before.GetProperty("draft").GetString())) return new(false, Error: "原客户端已有草稿，请先处理原草稿");
             if (!StillBound()) return new(false, Error: "原客户端已切换会话，后台输入已取消");
+            DiagnosticLog.Write(LogEvent.SendInputStarted, Provider, "send", request: activeTrace, source: source.SourceKey);
             if (!page.InsertText(request.Text, identity!)) return new(false, Error: "原客户端未接受后台输入，或会话、草稿已变化；已取消提交，请检查原草稿。");
             var after = page.State(source.Model);
             var editReceipt = Stopwatch.StartNew();
@@ -792,8 +823,10 @@ internal static partial class Program
             }
             if (!StillBound()) return new(false, Error: "会话已变化，消息保留在原客户端草稿中");
             if (after.GetProperty("stop").GetBoolean() || NormalizeDraft(after.GetProperty("draft").GetString() ?? "") != NormalizeDraft(request.Text)) return new(false, Error: "后台输入未核对一致，已取消提交，请检查原草稿");
+            DiagnosticLog.Write(LogEvent.SendInputVerified, Provider, "send", request: activeTrace, source: source.SourceKey);
             // One invocation only. Never retry an uncertain submission.
             if (!page.Click("send", source.Model, expectedIdentity: identity, expectedDraft: request.Text)) return new(false, Error: "原客户端发送按钮、会话或草稿已变化，提交已取消");
+            DiagnosticLog.Write(LogEvent.SendInvoked, Provider, "send", request: activeTrace, source: source.SourceKey);
             var receipt = Stopwatch.StartNew();
             while (receipt.ElapsedMilliseconds < 1100)
             {
@@ -801,7 +834,10 @@ internal static partial class Program
                 if (!StillBound()) break;
                 var accepted = page.State(source.Model);
                 if (accepted.GetProperty("editor").GetBoolean() && string.IsNullOrEmpty(accepted.GetProperty("draft").GetString()))
+                {
+                    DiagnosticLog.Write(LogEvent.SendAcknowledged, Provider, "send", ResultCode.Accepted, activeTrace, source.SourceKey);
                     return new(true);
+                }
             }
             return new(false, Error: "提交结果待确认，请检查原客户端；消息不会自动重发。");
         }

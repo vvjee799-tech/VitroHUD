@@ -177,6 +177,15 @@ deepSeekTest('deepseek-client-renderer-error-is-not-connected', deepSeekPanel('<
   assert(r.state.pageError && !r.state.stableIdentity && !r.state.editor && !r.state.canRead, 'native page failure is not mistaken for a working bridge');
   assert(!r.helpers.click('send','',null,r.state.identity,''), 'broken conversation cannot submit');
 });
+deepSeekTest('deepseek-draft-diagnostic-only-returns-shape-counts', deepSeekPanel(), (r, assert) => {
+  const key = 'dsh.conversation.diagnostic-fixture';
+  try {
+    localStorage.setItem(key, JSON.stringify({draft:{text:'private draft fixture',references:[]}}));
+    const report = r.helpers.persistedDraftFormat();
+    assert(report.objects >= 1 && typeof report.strings === 'number', 'draft shape counted');
+    assert(Object.keys(report).sort().join(',') === 'objects,strings' && !JSON.stringify(report).includes('private'), 'diagnostic has no draft values or session keys');
+  } finally { localStorage.removeItem(key); }
+});
 deepSeekTest('deepseek-mixed-era-panel-and-message-layout', deepSeekPanel('<div class="chat-messages">' + article('<p>historical message markup</p>') + '</div>'), (r, assert) => {
   assert(r.state.stableIdentity && r.state.editor, 'session panel still bound');
   assert(r.transcript.length === 1 && r.transcript[0].segments[0].text === 'historical message markup', 'semantic message roles work without flow markers');
@@ -351,7 +360,7 @@ const style = '<style>body{font:16px sans-serif}.sr-only{position:absolute;width
 const pages = cases.map((c, i) => {
   const fixtureLocation = c.location ? JSON.stringify(c.location) : c.deepSeek ? JSON.stringify({ protocol: 'dsh-app:', host: 'app', href: 'dsh-app://app/', pathname: '/', hash: '' }) : c.codex ? JSON.stringify({ protocol: 'app:', host: '-', href: 'app://-/index.html', pathname: '/index.html', hash: '' }) : 'window.location';
   const boundScript = script.replace('(() => {', '(() => { const clientProvider = ' + JSON.stringify(c.provider || 'ChatGPT') + ';');
-  const run = `(location=>{let checks=0;try{const result=${boundScript}\nreturn {transcript:transcript(${JSON.stringify(c.provider || 'ChatGPT')}),state:state('GPT Test Medium'),helpers:{insert,click}};})(),verify=(${c.verify});verify(result,(ok,msg)=>{checks++;if(!ok)throw Error(msg)});parent.postMessage({fixture:${i},name:${JSON.stringify(c.name)},passed:true,checks},parent.location.origin)}catch(e){parent.postMessage({fixture:${i},name:${JSON.stringify(c.name)},passed:false,error:String(e)},parent.location.origin)}})(${fixtureLocation});`;
+  const run = `(location=>{let checks=0;try{const result=${boundScript}\nreturn {transcript:transcript(${JSON.stringify(c.provider || 'ChatGPT')}),state:state('GPT Test Medium'),helpers:{insert,click,persistedDraftFormat}};})(),verify=(${c.verify});verify(result,(ok,msg)=>{checks++;if(!ok)throw Error(msg)});parent.postMessage({fixture:${i},name:${JSON.stringify(c.name)},passed:true,checks},parent.location.origin)}catch(e){parent.postMessage({fixture:${i},name:${JSON.stringify(c.name)},passed:false,error:String(e)},parent.location.origin)}})(${fixtureLocation});`;
   return '<!doctype html><meta charset="utf-8"><title>Formatting fixture</title>' + style + c.html + '<script>' + run.replace(/<\/script/gi, '<\\/script') + '</script>';
 });
 const harness = `<!doctype html><meta charset="utf-8"><title>VitroHUD extraction checks</title><style>body{font:16px sans-serif;padding:20px;background:#18211e;color:#eee}iframe{width:700px;height:700px;border:0}.pass{color:#b9dbac}.fail{color:#ffb8ac}</style><h1>VitroHUD extraction checks</h1><p id="summary">Running ${cases.length} fixtures…</p><pre id="results"></pre><div id="fixtures"></div><script>const pages=${JSON.stringify(pages).replace(/<\/script/gi, '<\\/script')},results=[];addEventListener('message',e=>{if(e.origin!==location.origin||!Number.isInteger(e.data?.fixture))return;const i=e.data.fixture;if(e.source!==document.querySelectorAll('iframe')[i]?.contentWindow)return;results[i]=e.data;document.getElementById('results').textContent=JSON.stringify(results.filter(Boolean),null,2);const done=results.filter(Boolean);document.getElementById('summary').textContent=done.filter(x=>x.passed).length+'/'+pages.length+' passed; '+done.filter(x=>!x.passed).length+' failed; '+done.reduce((a,x)=>a+(x.checks||0),0)+' assertions';});pages.forEach(p=>{const f=document.createElement('iframe');f.srcdoc=p;document.getElementById('fixtures').append(f)});</script>`;

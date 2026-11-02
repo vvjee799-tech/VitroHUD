@@ -1,6 +1,15 @@
 # 兼容性与验证范围
 
-VitroHUD 当前版本为 `0.1.18` Public Beta。本页区分历史客户端实测与可重复运行的自动检查；自动检查通过不代表任意客户端版本都可用。
+VitroHUD 当前版本为 `0.1.19` Public Beta。本页区分历史客户端实测与可重复运行的自动检查；自动检查通过不代表任意客户端版本都可用。
+
+## 0.1.19 提交提示、日志与字号
+
+- 2026-11-03 补测纯净模式：开关在常规/纯净视图均可见；开启后可访问控件树只保留会话区域、输入框与退出开关；两次切换保留未发送的测试草稿，清空后重启仍保持纯净模式。当前 DeepSeek 后台桥接未就绪，未发送消息；带内容的对照图为静态演示预览，未计为真实会话渲染验收。
+- 在 DeepSeek Harness `0.2.0-rc.2` 的既有测试会话单次发送“提交提示测试，请只回复：测试通过。”，侧栏显示“已提交客户端”并收到“测试通过。”；桌面与读取进程的提交阶段可通过同一请求编号对应。
+- 将会话字号调到 24 px，即时缩放；重启后仍显示 24 px。范围、旧配置默认值及保存读取另有自动检查。
+- 日志只记录连接状态、版本摘要、提交阶段及错误代码，正文和草稿不进入日志；自动检查覆盖隐私字段过滤、轮转、过期清理和 ZIP 导出。
+- 2026-11-03 通过运行日志窗口导出 ZIP，界面显示“运行日志已导出”；检查包内含 JSONL 与说明文件，同一测试提交的 7 条阶段记录及确认回执完整，未含测试正文、用户名或完整安装路径。
+- 该轮没有重新执行 Claude、ChatGPT 的真实发送，也未据此扩大旧版客户端兼容性保证。
 
 ## 0.1.18 自动发现与能力适配
 
@@ -41,6 +50,7 @@ VitroHUD 当前版本为 `0.1.18` Public Beta。本页区分历史客户端实�
 dotnet run --project tests/GlassInteraction/GlassInteraction.csproj -c Release
 dotnet run --project tests/ProviderTabs/ProviderTabs.csproj -c Release
 dotnet run --project tests/ClientDiscovery/ClientDiscovery.csproj -c Release
+dotnet run --project tests/Diagnostics/Diagnostics.csproj -c Release
 node --test tests/claude-bridge.test.mjs
 node tests/run-page-fixtures.mjs
 .\build.ps1 -Dotnet (Get-Command dotnet).Source
@@ -51,6 +61,7 @@ node tests/run-page-fixtures.mjs
 | GlassInteraction | 拉手与胶囊拖动、吸附、取消、圆角、动画时间线和配置解析 | 纯逻辑断言，不判断实际桌面动画手感或多屏 DPI |
 | ProviderTabs | 旧标签交互状态机回归 | 保留历史逻辑覆盖；当前界面使用侧边入口 |
 | ClientDiscovery | 程序元数据识别、不同目录/版本子目录/改名便携版、快捷方式及端口身份 | 合成旧版本号的静态程序文件与临时快捷方式，不启动真实客户端 |
+| Diagnostics | 提交回执与会话绑定、字号边界/保存、日志隐私/轮转/导出 | 临时目录与人工数据；真实桌面操作另行记录 |
 | Page compatibility | 现代与历史页面结构、消息提取、会话/草稿保护及页面加载失败 | 独立无界面 Chrome，仅访问本机合成样例，不操控用户浏览器；可用 `CHROME_PATH` 指定 Chrome |
 | Claude bridge | 内存模拟的会话路由、原草稿、忙碌状态、Nonce、过期请求、单次发送回执、模型回读和监听清理 | 不连接真实 Claude，也不向真实会话发送 |
 | Probe self-test | 来源、协议、路径、端口归属、配置迁移和格式解析守卫 | 构建脚本自动运行；使用测试数据、临时目录及回环监听器 |

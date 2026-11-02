@@ -91,7 +91,7 @@ public sealed partial class MainWindow
     private void Collapse()
     {
         if (!ready || collapsed) return;
-        modelFlyout?.Hide(); clientFlyout?.Hide(); Root.ContextFlyout.Hide(); CancelClientGesture(); clientPreview?.HidePreview();
+        modelFlyout?.Hide(); clientFlyout?.Hide(); Root.ContextFlyout?.Hide(); CancelClientGesture(); clientPreview?.HidePreview();
         if (!compactAnimating)
         {
             expandedBounds = new(AppWindow.Position.X, AppWindow.Position.Y, AppWindow.Size.Width, AppWindow.Size.Height);
@@ -130,6 +130,7 @@ public sealed partial class MainWindow
         ExpandedContent.HorizontalAlignment = HorizontalAlignment.Right; ExpandedContent.VerticalAlignment = VerticalAlignment.Bottom;
         ExpandedContent.IsHitTestVisible = false;
         CollapsedWidget.Visibility = Visibility.Visible; ClientHandleLayer.Visibility = Visibility.Collapsed; WindowDragHandle.Visibility = Visibility.Collapsed;
+        PureModeButton.Visibility = Visibility.Collapsed;
         ShellRim.Visibility = EdgeHighlightLayer.Visibility = Visibility.Visible;
         if (!motionSettings.AnimationsEnabled) { compactProgress = target; compactContentOpacity = target == 0 ? 1 : 0; PaintCompactFrame(); CompleteCompactAnimation(); }
         else PaintCompactFrame();
@@ -168,7 +169,7 @@ public sealed partial class MainWindow
         ExpandedContent.HorizontalAlignment = HorizontalAlignment.Stretch; ExpandedContent.VerticalAlignment = VerticalAlignment.Stretch;
         CollapsedWidget.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
         ShellRim.Visibility = EdgeHighlightLayer.Visibility = collapsed ? Visibility.Visible : Visibility.Collapsed;
-        ClientHandleLayer.Visibility = WindowDragHandle.Visibility = collapsed ? Visibility.Collapsed : Visibility.Visible;
+        UpdateModeChrome();
         if (!collapsed)
         {
             NativeWindow.Topmost(hwnd, settings.AlwaysOnTop); LayoutClientHandle();

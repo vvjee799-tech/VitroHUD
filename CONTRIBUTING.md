@@ -22,6 +22,7 @@
 dotnet run --project tests/GlassInteraction/GlassInteraction.csproj --configuration Release
 dotnet run --project tests/ProviderTabs/ProviderTabs.csproj --configuration Release
 dotnet run --project tests/ClientDiscovery/ClientDiscovery.csproj --configuration Release
+dotnet run --project tests/Diagnostics/Diagnostics.csproj --configuration Release
 node --test tests/claude-bridge.test.mjs
 node tests/run-page-fixtures.mjs
 ```

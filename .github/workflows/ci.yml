@@ -43,7 +43,7 @@ jobs:
       # These console projects test geometry/state with fixtures, without native input.
       - name: Test interaction logic
         run: |
-          foreach ($project in 'tests/GlassInteraction/GlassInteraction.csproj', 'tests/ProviderTabs/ProviderTabs.csproj', 'tests/ClientDiscovery/ClientDiscovery.csproj') {
+          foreach ($project in 'tests/GlassInteraction/GlassInteraction.csproj', 'tests/ProviderTabs/ProviderTabs.csproj', 'tests/ClientDiscovery/ClientDiscovery.csproj', 'tests/Diagnostics/Diagnostics.csproj') {
             dotnet run --project $project --configuration Release
             if ($LASTEXITCODE -ne 0) { throw "Interaction checks failed: $project" }
           }

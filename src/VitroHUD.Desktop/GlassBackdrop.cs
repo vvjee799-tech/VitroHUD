@@ -43,7 +43,7 @@ internal sealed class GlassBackdrop : SystemBackdrop
         catch (Exception ex)
         {
             CustomEffects = false;
-            App.Log("Custom backdrop unavailable: " + ex); host?.Dispose(); host = null;
+            DiagnosticLog.Write(LogEvent.AppError, exception: ex); host?.Dispose(); host = null;
             connectedTarget.SystemBackdrop = null; clear?.Dispose(); clear = null;
             if (DesktopAcrylicController.IsSupported())
             {

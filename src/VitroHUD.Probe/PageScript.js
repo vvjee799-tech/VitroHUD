@@ -123,7 +123,19 @@ const pageIdentityInfo = root => {
   const canonical = match && !/^(?:new|s|home|index|default)$/i.test(match[1]);
   return { identity: canonical ? location.href : location.href + '|' + document.title, stable: !!canonical };
 };
-const state = m => { const input = editor(), modelButton = model(m), root = conversationRoot(), binding = pageIdentityInfo(root); return { identity: binding.identity, stableIdentity: binding.stable, url: location.href, title: document.title, canRead: !!root, draft: draft(input), editor: enabled(input), send: !!send(), stop: enabled(stop()), model: label(modelButton || document.createElement('span')), modelEnabled: enabled(modelButton), pageError: isDeepSeekPage() && !!document.querySelector('[data-conversation-content] [data-slot="conversation.session"] [data-slot-error]') }; };
+const persistedDraftFormat = () => {
+  let strings = 0, objects = 0;
+  try {
+    for (let i = 0; i < Math.min(localStorage.length, 500); i++) {
+      const key = localStorage.key(i); if (!key?.startsWith('dsh.conversation.')) continue;
+      let stored; try { const raw = localStorage.getItem(key); if (raw.length > 200000) continue; stored = JSON.parse(raw); } catch { continue; }
+      if (typeof stored?.draft === 'string') strings++;
+      else if (stored?.draft && typeof stored.draft === 'object') objects++;
+    }
+  } catch { }
+  return { strings, objects };
+};
+const state = m => { const input = editor(), modelButton = model(m), root = conversationRoot(), binding = pageIdentityInfo(root); return { identity: binding.identity, stableIdentity: binding.stable, url: location.href, title: document.title, canRead: !!root, draft: draft(input), editor: enabled(input), send: !!send(), stop: enabled(stop()), model: label(modelButton || document.createElement('span')), modelEnabled: enabled(modelButton), draftFormat: isDeepSeekPage() && document.querySelector('[data-slot-error]') ? persistedDraftFormat() : null, pageError: isDeepSeekPage() && !!document.querySelector('[data-conversation-content] [data-slot="conversation.session"] [data-slot-error]') }; };
 const normalizeDraft = t => t.replace(/\r\n/g, '\n').replace(/\n+$/, '');
 let insertionAttempted = false;
 const insert = (text, expectedIdentity) => {

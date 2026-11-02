@@ -154,6 +154,7 @@ public sealed partial class MainWindow
     private void PaintClientHandle()
     {
         if (!clientReady || compactAnimating || collapsed) return;
+        if (settings.PureMode) { clientPreview?.HidePreview(); return; }
         var side = ClientHandlePlacement.Connection(clientX, Root.ActualWidth).Side;
         var edge = side < 0 ? ClientHandlePlacement.Left : ClientHandlePlacement.Right(Root.ActualWidth);
         clientOutline = LiquidHandleGeometry.Outline(clientX, clientY, edge, clientConnection);
@@ -223,7 +224,7 @@ public sealed partial class MainWindow
     private void ShowClientMenu()
     {
         if (collapsed || compactAnimating || clientPlacement.Pressed) return;
-        modelFlyout?.Hide(); Root.ContextFlyout.Hide(); clientFlyout?.Hide();
+        modelFlyout?.Hide(); Root.ContextFlyout?.Hide(); clientFlyout?.Hide();
         var list = new StackPanel { Spacing = 3, Width = 168 };
         foreach (var provider in new[] { "Claude", "ChatGPT", "DeepSeek" })
         {

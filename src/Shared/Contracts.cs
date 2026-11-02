@@ -33,11 +33,15 @@ public sealed record SourceSnapshot
     public List<MessageBlock> Messages { get; init; } = [];
     public DateTimeOffset ObservedAt { get; init; } = DateTimeOffset.UtcNow;
 }
-public sealed record BridgeRequest(string Op, string SourceKey = "", string Text = "", string Value = "", bool AllowForegroundInput = false, long OriginWindow = 0, List<string>? MenuPath = null);
-public sealed record BridgeReply(bool Ok, SourceSnapshot? Snapshot = null, string Error = "", List<string>? Choices = null);
+public sealed record BridgeRequest(string Op, string SourceKey = "", string Text = "", string Value = "", bool AllowForegroundInput = false, long OriginWindow = 0, List<string>? MenuPath = null, string TraceId = "");
+public sealed record BridgeReply(bool Ok, SourceSnapshot? Snapshot = null, string Error = "", List<string>? Choices = null, string Code = "");
 
 public sealed class AppearanceSettings
 {
+    public bool PureMode { get; set; }
+    public const double DefaultTextSize = 20;
+    private double textSize = DefaultTextSize;
+    public double TextSize { get => textSize; set => textSize = double.IsFinite(value) ? Math.Clamp(value, 12, 28) : DefaultTextSize; }
     public const double DefaultCornerRadius = 11;
     private double cornerRadius = DefaultCornerRadius;
     public double Transparency { get; set; } = 70;
