@@ -1,23 +1,20 @@
-using System.Diagnostics;
 using Windows.Management.Deployment;
 
 namespace VitroHUD.Desktop;
 
 internal static class BackgroundLauncher
 {
+    internal static void DiscoverInstalledClients()
+    {
+        foreach (var provider in new[] { "DeepSeek", "Claude", "ChatGPT" })
+        {
+            try { FindExecutable(provider); } catch { }
+        }
+    }
     public static string? FindExecutable(string provider)
     {
-        var name = provider switch { "Claude" => "claude", "DeepSeek" => "DeepSeek Harness", _ => "ChatGPT" };
-        foreach (var process in Process.GetProcessesByName(name))
-        {
-            try { if (process.MainWindowHandle != 0 && process.MainModule?.FileName is { } path) return path; } catch { }
-            finally { process.Dispose(); }
-        }
-        if (provider == "DeepSeek")
-        {
-            var path = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "DeepSeek Harness", "DeepSeek Harness.exe");
-            return File.Exists(path) ? path : null;
-        }
+        var discovered = ClientDiscovery.FindExecutable(provider);
+        if (discovered != null) { ClientDiscovery.TryRemember(provider, discovered); return discovered; }
         try
         {
             var packages = new PackageManager().FindPackagesForUser("");
@@ -25,21 +22,13 @@ internal static class BackgroundLauncher
             if (package != null)
             {
                 var path = Path.Combine(package.InstalledLocation.Path, "app", provider == "Claude" ? "Claude.exe" : "ChatGPT.exe");
-                if (File.Exists(path)) return path;
+                if (ClientDiscovery.IsExecutable(provider, path)) { ClientDiscovery.TryRemember(provider, path); return path; }
             }
         }
         catch { }
         return null;
     }
-    public static bool IsRunning(string path)
-    {
-        foreach (var process in Process.GetProcessesByName(Path.GetFileNameWithoutExtension(path)))
-        {
-            try { if (string.Equals(process.MainModule?.FileName, path, StringComparison.OrdinalIgnoreCase)) return true; } catch { }
-            finally { process.Dispose(); }
-        }
-        return false;
-    }
+    public static bool IsRunning(string path) => new[] { "DeepSeek", "Claude", "ChatGPT" }.Any(p => ClientDiscovery.IsRunning(p, path));
     public static void Start(string path)
     {
         ClientActivation.Start(path);

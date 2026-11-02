@@ -6,7 +6,7 @@
 
 <p><strong>把已有的官方 AI 客户端会话，优雅投射到 Windows 桌面的原生流体玻璃侧栏</strong></p>
 
-[![Version](https://img.shields.io/badge/version-0.1.17--beta-blue.svg?style=flat-square)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/version-0.1.18--beta-blue.svg?style=flat-square)](CHANGELOG.md)
 [![Platform](https://img.shields.io/badge/platform-Windows%2010%20%2F%2011%20x64-0078D6.svg?style=flat-square&logo=windows)](https://www.microsoft.com/windows)
 [![Status](https://img.shields.io/badge/status-Public%20Beta-orange.svg?style=flat-square)](#compatibility)
 [![License](https://img.shields.io/badge/license-MIT-4d7754.svg?style=flat-square)](LICENSE)
@@ -39,9 +39,9 @@ VitroHUD 是独立的社区开源项目，与 Anthropic、OpenAI、DeepSeek 及 
 
 它采用纯本机进程桥接技术，直接连接宿主机上已经登录、正在运行的官方桌面客户端。**不走任何第三方中间代理服务器，不伪造任何身份，不调用模型收费 API**。它将现有会话以轻量、通透的玻璃侧栏悬浮于屏幕边缘。即便原客户端最小化或退入后台，依然可以在 VitroHUD 中实时查看消息流、换行输入、无损保留缩进、切换模型并调整深度思考（Effort）等级。
 
-> ⚠️ **测试版状态说明（Beta 0.1.17）**
+> ⚠️ **测试版状态说明（Beta 0.1.18）**
 >
-> 当前版本处于活跃迭代的 Public Beta 阶段，尚未达到稳定版验收标准。本项目的本机适配依赖特定官方客户端的内部通道、安装路径及运行模式，若原客户端发生大版本升级，可能需要调整适配器代码。最新全量客户端兼容性复测记录来自 `0.1.8`；`0.1.17` 已补测 DeepSeek 最小化后的单次双向收发，细节见下方 [测试版兼容性矩阵](#compatibility)。
+> 当前版本处于活跃迭代的 Public Beta 阶段，尚未达到稳定版验收标准。`0.1.18` 不按客户端发布版本号限制连接，启动后自动发现安装路径，连接后按实际能力启用功能；客户端内部接口发生变化时仍可能需要更新适配。最新全量客户端实测来自 `0.1.8`，`0.1.17` 补测了 DeepSeek 最小化后的单次双向收发，`0.1.18` 的验证范围见 [capability-tests.md](capability-tests.md)。
 
 ---
 
@@ -131,7 +131,7 @@ VitroHUD 是独立的社区开源项目，与 Anthropic、OpenAI、DeepSeek 及 
 | 客户端及已测版本 | 核心通信技术 | 已验证通过的能力 | 当前版本已知限制 |
 | :--- | :--- | :--- | :--- |
 | **Claude Code**<br><code>4.4212.0.0</code><br>*(Code 模式)* | **私有带 ACL 本地工作区桥接**<br>+ Renderer JS 事件调度 | • 最小化后会话持续静默同步<br>• 单次多行提交并正常接收流式回复<br>• 实时切换模型 (Sonnet / Opus) 并回读<br>• 实时切换推理深度 (Low / Med / High) | • 首次建立需在原客户端控制台执行专属连接脚本<br>• 客户端重载或退出后需重连<br>• 官方通道未开放后台强行终止生成<br>• 普通聊天模式与 Cowork 暂未适配 |
-| **ChatGPT / Codex**<br><code>26.1027.3384.0</code><br>*(Codex 模式)* | **官方命名管道 IPC**<br>(<code>codex-ipc</code> 协议) | • 窗口最小化后消息稳定双向收发<br>• 模型动态切换并校验原所有者回执<br>• 推理等级 (High / Max) 动态调节<br>• 原客户端切页后会话保持固定订阅 | • 严格校验 WindowsApps 下 <code>OpenAI.Codex</code> 安装路径<br>• 普通 ChatGPT 网页/应用聊天模式未接入此协议<br>• 后台通道暂未开放中断生成接口 |
+| **ChatGPT / Codex**<br><code>26.1027.3384.0</code><br>*(Codex 模式)* | **官方命名管道 IPC**<br>(<code>codex-ipc</code> 协议) | • 窗口最小化后消息稳定双向收发<br>• 模型动态切换并校验原所有者回执<br>• 推理等级 (High / Max) 动态调节<br>• 原客户端切页后会话保持固定订阅 | • 校验管道所属客户端、进程及会话所有者；不再限定 WindowsApps 安装根目录<br>• 普通 ChatGPT 网页/应用聊天模式未接入此协议<br>• 后台通道暂未开放中断生成接口 |
 | **DeepSeek Harness**<br><code>0.2.1-rc.5</code><br>历史补充：<code>rc.3</code> | **回环专用页面桥接**<br>+ 剪贴板受控注入 | • <code>rc.5</code> / VitroHUD <code>0.1.17</code>：原窗口最小化时从侧栏单次发送，原会话确认无重复，助手回复同步回侧栏<br>• <code>rc.3</code> 历史实测：模型与推理等级切换、多行格式保留及原草稿保护 | • 必须通过“启动后台模式”建立本机页面桥接，退出客户端后需重连<br>• 本轮未重测模型/推理切换、多行发送及停止生成<br>• <code>rc.3</code> 历史实测曾遇上游 <code>TRANSPORT / Connection error</code>，不能替代本轮 <code>rc.5</code> 结果 |
 
 > 📌 **深度测试报告**：详细的单项实测记录请查阅 [capability-tests.md](capability-tests.md)，交互细节与视觉验收记录请查阅 [design-qa.md](design-qa.md)。
@@ -315,6 +315,8 @@ Claude Code 拥有强大的 Agent 能力。VitroHUD 通过带 Windows 原生 ACL
 
 针对 DeepSeek 官方 Electron 客户端，VitroHUD 提供了纯本机回环调试挂载机制，无需改动安装包文件。
 
+VitroHUD 启动后会自动查找运行中的客户端、安装登记、常见安装目录、开始菜单及桌面快捷方式，并记住识别到的程序路径；无需手动选择 exe，也不检查客户端发布版本号。未登记、没有快捷方式且从未运行过的便携版，请先正常打开一次，侧栏会自动识别并记住它。客户端移动或升级后，旧路径失效时会重新发现。
+
 1. **彻底退出客户端**：从系统托盘或 DeepSeek Harness 主菜单选择**彻底退出程序**（确保后台无残留进程）；
 2. **启动后台托管**：在 VitroHUD 选择 **DeepSeek**，打开 **“连接后台会话…”**，点击 **“启动后台模式”**；
 3. **自动拉起与回环绑定**：VitroHUD 会调用本机已安装的 DeepSeek 可执行文件，附带仅监听 `127.0.0.1` 的回环通信参数安全启动；
@@ -322,6 +324,8 @@ Claude Code 拥有强大的 Agent 能力。VitroHUD 通过带 Windows 原生 ACL
 5. **开始使用**：VitroHUD 自动完成 DOM 结构与受控编辑器挂钩，同步消息流。确认状态就绪后，可直接将 DeepSeek 窗口最小化。
 
 后台模式依赖上述启动过程启用的本机页面桥接，客户端退出后需重新连接。若看到“客户端已最小化 · 尚未连接可用的后台操作方式”，请按第 1–4 步重新启动；若侧栏仍显示旧状态，确认没有待发送草稿后重启 VitroHUD，再选择 DeepSeek。以侧栏显示“已连接官方会话 · 后台模式”以及实际收发结果确认连接。
+
+新版本会区分自动定位失败、桥接未就绪、会话身份未确认和原客户端页面加载失败。识别到程序不等于全部功能可用：只有实际页面提供可确认的会话和操作能力时才启用后台写入，不会通过猜测会话标题或覆盖原草稿来强行连接。
 
 ---
 

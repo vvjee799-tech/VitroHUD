@@ -15,7 +15,7 @@ internal static class AppPaths
 
     internal static string FilePath(string name)
     {
-        if (!MigratedFiles.Contains(name)) throw new ArgumentException("Unknown application data file", nameof(name));
+        if (!MigratedFiles.Contains(name) && name != "client-paths.json") throw new ArgumentException("Unknown application data file", nameof(name));
         Migrate(Root);
         return Path.Combine(Root, "VitroHUD", name);
     }

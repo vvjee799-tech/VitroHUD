@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup><OutputType>Exe</OutputType><TargetFramework>net10.0-windows</TargetFramework></PropertyGroup>
+  <ItemGroup><Compile Remove="FixtureClient/**/*.cs" /></ItemGroup>
+  <ItemGroup>
+    <Compile Include="../../src/Shared/ClientDiscovery.cs" Link="ClientDiscovery.cs" />
+    <Compile Include="../../src/Shared/ClientPageIdentity.cs" Link="ClientPageIdentity.cs" />
+    <Compile Include="../../src/Shared/AppPaths.cs" Link="AppPaths.cs" />
+    <Compile Include="../../src/Shared/Contracts.cs" Link="Contracts.cs" />
+    <ProjectReference Include="FixtureClient/FixtureClient.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
+  <Target Name="CopyFixtureExecutable" AfterTargets="Build">
+    <Copy SourceFiles="FixtureClient/bin/$(Configuration)/net10.0-windows/DeepSeekHarness.exe" DestinationFiles="$(OutDir)fixture/DeepSeekHarness.exe" />
+  </Target>
+</Project>

@@ -45,8 +45,8 @@ internal sealed class CodexPipe : IDisposable
             if (!GetNamedPipeServerProcessId(pipe.SafePipeHandle, out var pid)) throw new IOException();
             using var process = Process.GetProcessById((int)pid);
             var path = process.MainModule?.FileName ?? "";
-            // Limit this version-specific protocol to the actual installed app.
-            if (!path.StartsWith(@"C:\Program Files\WindowsApps\OpenAI.Codex_", StringComparison.OrdinalIgnoreCase) || !path.EndsWith(@"\app\ChatGPT.exe", StringComparison.OrdinalIgnoreCase)) throw new IOException();
+            // Verify the pipe server is the client, regardless of installation root.
+            if (!ClientDiscovery.IsExecutable("ChatGPT", path)) throw new IOException();
             processId = process.Id; processStart = process.StartTime.ToUniversalTime().Ticks; window = process.MainWindowHandle;
             if (window == 0) throw new IOException();
             _ = Task.Run(ReadLoop);

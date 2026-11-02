@@ -59,7 +59,7 @@ internal sealed partial class ClaudeConnection
         GetWindowThreadProcessId((nint)configuration.Window, out var pid);
         using var process = Process.GetProcessById(configuration.ProcessId);
         var path = process.MainModule?.FileName ?? "";
-        if (pid != configuration.ProcessId || process.StartTime.ToUniversalTime().Ticks != configuration.ProcessStart || !path.StartsWith(@"C:\Program Files\WindowsApps\Claude_", StringComparison.OrdinalIgnoreCase) || !path.EndsWith(@"\app\Claude.exe", StringComparison.OrdinalIgnoreCase)) throw new IOException();
+        if (pid != configuration.ProcessId || process.StartTime.ToUniversalTime().Ticks != configuration.ProcessStart || !ClientDiscovery.IsExecutable("Claude", path)) throw new IOException();
     }
     internal static string Prepare(string workspace, string sessionId, int processId, long window)
     {

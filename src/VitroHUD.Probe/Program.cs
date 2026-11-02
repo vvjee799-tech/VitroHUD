@@ -31,11 +31,19 @@ internal static partial class Program
         if (args.Contains("--glass-geometry")) { Console.WriteLine(JsonSerializer.Serialize(WindowGeometry.Read())); return 0; }
         if (args.Contains("--launch-background"))
         {
-            var path = args.LastOrDefault(a => a.EndsWith(".exe", StringComparison.OrdinalIgnoreCase));
-            if (path == null || !System.IO.File.Exists(path) || !string.Equals(System.IO.Path.GetFileNameWithoutExtension(path), Provider switch { "DeepSeek" => "DeepSeek Harness", "Claude" => "Claude", _ => "ChatGPT" }, StringComparison.OrdinalIgnoreCase)) return 2;
+            var path = args.LastOrDefault(a => a.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)) ?? ClientDiscovery.FindExecutable(Provider);
+            if (path == null || !ClientDiscovery.IsExecutable(Provider, path)) return 2;
             Console.WriteLine(JsonSerializer.Serialize(new { startedProcess = ClientActivation.Start(path) })); return 0;
         }
         if (args.Contains("--self-test")) return SelfTest();
+        if (args.Contains("--diagnose-client"))
+        {
+            var path = ClientDiscovery.FindExecutable(Provider);
+            var running = ClientDiscovery.RunningExecutables(Provider);
+            Console.WriteLine(JsonSerializer.Serialize(new { provider = Provider, executableRecognized = path != null,
+                runningProcesses = running.Count, loopbackListeners = running.Sum(p => LocalEndpoint.PortsOwnedBy(p.ProcessId).Count), versionRestricted = false }, Wire.Json));
+            return 0;
+        }
         if (args.Contains("--once")) { Emit(Read()); return 0; }
         if (args.Contains("--inspect-editor")) { Inspect(true); return 0; }
         if (args.Contains("--inspect-metadata")) { InspectMetadata(); return 0; }
@@ -61,14 +69,14 @@ internal static partial class Program
 
     private static List<AutomationElement> Windows()
     {
-        var processName = Provider switch { "Claude" => "claude", "DeepSeek" => "DeepSeek Harness", _ => "ChatGPT" };
-        var pids = Process.GetProcessesByName(processName).Select(p => p.Id).ToHashSet();
+        var pids = new HashSet<int>();
         var windows = new List<AutomationElement>();
         EnumWindows((h, _) =>
         {
             GetWindowThreadProcessId(h, out var pid);
-            if (pids.Contains((int)pid) && IsWindowVisible(h))
+            if (IsWindowVisible(h) && (pids.Contains((int)pid) || ClientDiscovery.ProcessPath(Provider, (int)pid) != null))
             {
+                pids.Add((int)pid);
                 try { var e = AutomationElement.FromHandle(h); if (IsIconic(h) || e.Current.BoundingRectangle.Width > 250) windows.Add(e); } catch { }
             }
             return true;
@@ -127,7 +135,7 @@ internal static partial class Program
             if (Provider == "ChatGPT" && canonical.Success) { identity = canonical.Groups[1].Value; stableIdentity = true; }
             if (Provider == "DeepSeek")
             {
-                var chatTitle = title.Replace(" — DeepSeek Harness", "");
+                var chatTitle = Regex.Replace(title, @"\s*[—–-]\s*(?:DeepSeek[\s_-]*Harness|DSH[\s_-]*Desktop)\s*$", "", RegexOptions.IgnoreCase);
                 var matching = elements.Where(e => Type(e, ControlType.TreeItem) && (Name(e) == chatTitle || Name(e).StartsWith(chatTitle + " ", StringComparison.Ordinal))).ToList();
                 // Selection/focus changes while a native menu opens. Bind the uniquely named conversation instead.
                 identity = address + "|" + title;
@@ -249,7 +257,7 @@ internal static partial class Program
         {
             Provider = Provider, SourceKey = c.Key, WindowHandle = c.Window.Current.NativeWindowHandle,
             Status = providerError ? "client-error" : minimized ? "paused" : c.Conversation == null ? "unrecognized" : cooldown ? "upstream-error" : "connected",
-            Detail = providerError ? "官方客户端无法连接其提供方，请在原客户端恢复连接" : minimized ? "客户端已最小化 · 尚未连接可用的后台操作方式" : c.Conversation == null ? "已找到客户端，等待打开会话" : !c.StableIdentity ? "读取模式 · 当前会话身份尚未确认" : cooldown ? "原客户端本轮失败 · 模型暂不可用" : "已连接官方客户端 · 已加载内容",
+            Detail = providerError ? "官方客户端无法连接其提供方，请在原客户端恢复连接" : minimized ? "已找到客户端 · 后台桥接未就绪，请使用“连接后台会话”" : c.Conversation == null ? "已找到客户端，等待打开会话" : !c.StableIdentity ? "读取模式 · 当前会话身份尚未确认" : cooldown ? "原客户端本轮失败 · 模型暂不可用" : "已连接官方客户端 · 已加载内容",
             Title = c.Title,
             Model = model == null ? "由客户端控制" : Name(model).Replace("选择模型，当前 ", "").Replace("，推理等级 ", " ").Replace("Model: ", ""), Draft = draft, IsGenerating = stop != null && Enabled(stop), Partial = true,
             Messages = messages,
@@ -532,6 +540,11 @@ internal static partial class Program
                 if (attached != null)
                 {
                     var view = attached.ReadView(bound.Source.Model, Provider);
+                    if (PageLoadFailed(view.State))
+                    {
+                        backgroundBinding = null;
+                        return new(true, bound.Source with { Status = "client-error", Detail = "已识别客户端 · 原客户端会话页面加载失败，请先在原客户端恢复", BackgroundConnected = false, Capabilities = new(), Messages = [], ObservedAt = DateTimeOffset.UtcNow });
+                    }
                     if (!view.State.GetProperty("stableIdentity").GetBoolean() || view.State.GetProperty("identity").GetString() != bound.Identity)
                     {
                         backgroundBinding = null;
@@ -563,16 +576,20 @@ internal static partial class Program
     private static SourceSnapshot BackgroundSource(Context context, SourceSnapshot source, BackgroundPage page, JsonElement state)
     {
         var strong = state.GetProperty("stableIdentity").GetBoolean();
+        var pageFailed = PageLoadFailed(state);
         var connected = WithBackground(source, state, strong);
         return connected with
         {
             SourceKey = strong ? Wire.Hash($"{Provider}|{context.Window.Current.ProcessId}|{source.WindowHandle}|page:{page.TargetId}|{state.GetProperty("identity").GetString()}") : source.SourceKey,
             BackgroundConnected = strong,
-            Status = strong ? connected.Status : source.Status,
-            Detail = strong ? connected.Detail : "已读取官方会话 · 后台操作身份尚未确认",
-            Capabilities = strong ? connected.Capabilities : source.Capabilities
+            Status = pageFailed ? "client-error" : strong ? connected.Status : source.Status,
+            Detail = pageFailed
+                ? "已识别客户端 · 原客户端会话页面加载失败，请先在原客户端恢复"
+                : strong ? connected.Detail : "已识别客户端 · 页面会话身份未确认，后台写入暂不可用",
+            Capabilities = pageFailed ? new() : strong ? connected.Capabilities : new(source.Capabilities.CanRead)
         };
     }
+    private static bool PageLoadFailed(JsonElement state) => state.TryGetProperty("pageError", out var error) && error.ValueKind == JsonValueKind.True;
     private static bool SameWindow(PageBinding binding)
     {
         if (!IsWindow((nint)binding.Source.WindowHandle)) return false;

@@ -14,7 +14,9 @@ internal static class ClientActivation
     }
     public static uint Start(string path)
     {
-        if (string.Equals(System.IO.Path.GetFileNameWithoutExtension(path), "Claude", StringComparison.OrdinalIgnoreCase))
+        var provider = new[] { "DeepSeek", "Claude", "ChatGPT" }.FirstOrDefault(p => ClientDiscovery.IsExecutable(p, path));
+        if (provider == null) throw new InvalidOperationException("程序未识别为支持的客户端主程序。");
+        if (provider == "Claude")
             throw new NotSupportedException("当前 Claude 的后台写入尚未通过验证，请使用前台模式。");
         foreach (var running in Process.GetProcessesByName(System.IO.Path.GetFileNameWithoutExtension(path)))
         {

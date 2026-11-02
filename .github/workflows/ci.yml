@@ -43,13 +43,16 @@ jobs:
       # These console projects test geometry/state with fixtures, without native input.
       - name: Test interaction logic
         run: |
-          foreach ($project in 'tests/GlassInteraction/GlassInteraction.csproj', 'tests/ProviderTabs/ProviderTabs.csproj') {
+          foreach ($project in 'tests/GlassInteraction/GlassInteraction.csproj', 'tests/ProviderTabs/ProviderTabs.csproj', 'tests/ClientDiscovery/ClientDiscovery.csproj') {
             dotnet run --project $project --configuration Release
             if ($LASTEXITCODE -ne 0) { throw "Interaction checks failed: $project" }
           }
 
       - name: Test Claude bridge fixtures
         run: node --test tests/claude-bridge.test.mjs
+
+      - name: Test page compatibility fixtures in headless Chrome
+        run: node tests/run-page-fixtures.mjs
 
       # Publishes both processes, validates XAML/assets and runs Probe --self-test.
       # Do not launch the desktop app or connect to a real client in CI.

@@ -3,7 +3,6 @@ using System.IO;
 using System.Net.WebSockets;
 using System.Text;
 using System.Text.Json;
-using System.Text.RegularExpressions;
 using VitroHUD;
 
 // Connects only to the original client's loopback DevTools endpoint. It never
@@ -13,17 +12,23 @@ internal sealed class BackgroundPage : IDisposable
 {
     private readonly ClientWebSocket socket = new();
     private int sequence;
+    private readonly string provider;
     public string TargetId { get; }
-    private static readonly HttpClient http = new(new HttpClientHandler { UseProxy = false }) { Timeout = TimeSpan.FromSeconds(1) };
-    private BackgroundPage(string endpoint, string targetId)
+    private static readonly HttpClient http = new(new HttpClientHandler { UseProxy = false, AllowAutoRedirect = false }) { Timeout = TimeSpan.FromSeconds(1), MaxResponseContentBufferSize = 1_000_000 };
+    private BackgroundPage(string endpoint, string targetId, string provider)
     {
         TargetId = targetId;
+        this.provider = provider;
+        socket.Options.Proxy = null;
         using var deadline = new CancellationTokenSource(TimeSpan.FromSeconds(2));
         try { socket.ConnectAsync(new Uri(endpoint), deadline.Token).GetAwaiter().GetResult(); }
         catch { socket.Dispose(); throw; }
     }
     public static BackgroundPage? Connect(string provider, string title, int processId, string? targetId = null)
     {
+        if (ClientDiscovery.ProcessPath(provider, processId) == null) return null;
+        var owned = LocalEndpoint.PortsOwnedBy(processId);
+        var candidates = new List<(int Port, string? BrowserPath)>();
         var local = Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData);
         var roaming = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
         string[] roots = provider switch
@@ -38,30 +43,38 @@ internal sealed class BackgroundPage : IDisposable
             {
                 var lines = File.ReadAllLines(Path.Combine(root, "DevToolsActivePort"));
                 if (lines.Length < 2 || !int.TryParse(lines[0], out var port) || port is < 1024 or > 65535 || !lines[1].StartsWith("/devtools/browser/")) continue;
+                if (owned.Contains(port)) candidates.Add((port, lines[1]));
+            }
+            catch (Exception ex) when (ex is IOException or UnauthorizedAccessException) { }
+        }
+        // A profile rename or portable user-data directory must not hide a live
+        // bridge. Inspect only loopback listeners owned by this exact client PID.
+        foreach (var port in owned.Take(8)) candidates.Add((port, null));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+        foreach (var (port, browserPath) in candidates)
+        {
+            if (watch.ElapsedMilliseconds > 2200) break;
+            try
+            {
                 if (!LocalEndpoint.OwnedBy(port, processId)) continue;
                 var origin = $"http://127.0.0.1:{port}";
                 using var version = JsonDocument.Parse(http.GetStringAsync(origin + "/json/version").GetAwaiter().GetResult());
-                if (new Uri(version.RootElement.GetProperty("webSocketDebuggerUrl").GetString()!).AbsolutePath != lines[1]) continue;
+                var browser = version.RootElement.GetProperty("webSocketDebuggerUrl").GetString() ?? "";
+                if (!ClientPageIdentity.DebugEndpoint(browser, port, "browser") || browserPath != null && new Uri(browser).AbsolutePath != browserPath) continue;
                 using var targets = JsonDocument.Parse(http.GetStringAsync(origin + "/json/list").GetAwaiter().GetResult());
-                var pages = targets.RootElement.EnumerateArray().Where(t => t.GetProperty("type").GetString() == "page" && Eligible(provider, t.GetProperty("url").GetString() ?? "")).ToList();
-                var matches = pages.Where(t => targetId != null ? t.GetProperty("id").GetString() == targetId : SameTitle(t.GetProperty("title").GetString() ?? "", title)).ToList();
-                if (matches.Count != 1) continue; // Do not guess among windows or unnamed views.
-                var endpoint = new Uri(matches[0].GetProperty("webSocketDebuggerUrl").GetString()!);
-                if (!endpoint.IsLoopback || endpoint.Port != port || endpoint.Scheme != "ws") continue;
-                return new BackgroundPage(endpoint.AbsoluteUri, matches[0].GetProperty("id").GetString()!);
+                var pages = targets.RootElement.EnumerateArray().Where(t => t.GetProperty("type").GetString() == "page" && ClientPageIdentity.Eligible(provider, t.GetProperty("url").GetString() ?? "")).ToList();
+                var matches = pages.Where(t => targetId != null ? t.GetProperty("id").GetString() == targetId : ClientPageIdentity.SameTitle(provider, t.GetProperty("title").GetString() ?? "", title)).ToList();
+                if (targetId == null && matches.Count == 0 && pages.Count == 1 && ClientDiscovery.MatchesName(provider, title)
+                    && !string.IsNullOrWhiteSpace(pages[0].GetProperty("title").GetString())) matches = pages;
+                if (matches.Count != 1) continue;
+                var endpoint = matches[0].GetProperty("webSocketDebuggerUrl").GetString() ?? "";
+                if (!ClientPageIdentity.DebugEndpoint(endpoint, port, "page") || !LocalEndpoint.OwnedBy(port, processId)) continue;
+                return new BackgroundPage(endpoint, matches[0].GetProperty("id").GetString()!, provider);
             }
-            catch (Exception ex) when (ex is IOException or HttpRequestException or JsonException or TimeoutException or WebSocketException or UriFormatException or OperationCanceledException or KeyNotFoundException) { }
+            catch (Exception ex) when (ex is IOException or HttpRequestException or JsonException or TimeoutException or WebSocketException or UriFormatException or OperationCanceledException or KeyNotFoundException or InvalidOperationException) { }
         }
         return null;
     }
-    private static bool Eligible(string provider, string url) => provider switch
-    {
-        "DeepSeek" => url.StartsWith("dsh-app://app/", StringComparison.OrdinalIgnoreCase),
-        "Claude" => Regex.IsMatch(url, @"^app://localhost/(?:epitaxy|code|claude-code-desktop)(?:/|$)", RegexOptions.IgnoreCase),
-        _ => url.StartsWith("app://", StringComparison.OrdinalIgnoreCase)
-    };
-    private static bool SameTitle(string left, string right) => Normalize(left) == Normalize(right);
-    private static string Normalize(string value) => Regex.Replace(value, @"\s+", " ").Trim();
     public JsonElement Evaluate(string expression)
     {
         var response = Command("Runtime.evaluate", new { expression, returnByValue = true, awaitPromise = true });
@@ -124,7 +137,8 @@ internal sealed class BackgroundPage : IDisposable
         }
     }
     public void Dispose() => socket.Dispose();
-    private static readonly string Script = LoadScript();
+    private static readonly string ScriptSource = LoadScript();
+    private string Script => "(() => { const clientProvider = " + JsonSerializer.Serialize(provider) + ";\n" + ScriptSource["(() => {".Length..];
     private static string LoadScript()
     {
         using var resource = typeof(BackgroundPage).Assembly.GetManifestResourceStream("VitroHUD.Probe.PageScript.js")

@@ -3,7 +3,7 @@ const path = require('node:path');
 const script = fs.readFileSync(path.join(__dirname, '../src/VitroHUD.Probe/PageScript.js'), 'utf8');
 const cases = [];
 function test(name, html, verify, options = {}) { cases.push({ name, html, verify: verify.toString(), ...options }); }
-function deepSeekTest(name, html, verify) { test(name, html, verify, { provider: 'DeepSeek', deepSeek: true }); }
+function deepSeekTest(name, html, verify, options = {}) { test(name, html, verify, { provider: 'DeepSeek', deepSeek: true, ...options }); }
 function codexTest(name, html, verify) { test(name, html, verify, { provider: 'ChatGPT', codex: true }); }
 const editor = '<textarea aria-label="Prompt"></textarea><button aria-label="Send">Send</button><button>GPT Test Medium</button>';
 const article = (body, role = 'assistant', id = 'test-message') => `<article data-message-author-role="${role}" data-message-id="${id}">${body}</article>`;
@@ -138,6 +138,49 @@ test('guarded-click-rejects-changed-identity-or-draft', boundFeed + editor, (r, 
 const deepSeekPanel = (content = '', id = 'session-actual', composer = '<div data-composer-input contenteditable="true"></div>') =>
   `<div data-slot="main.conversation"><div data-conversation-content data-conversation-session="${id}" data-content-phase="hero"><div data-conversation-scroll>${content}<div data-composer-seat>${composer}<button aria-label="Send">Send</button></div></div></div></div>`;
 const deepSeekSelected = id => `<div role="treeitem" aria-selected="true" data-row-key="session:${id}"></div>`;
+
+const legacyDeepSeek = (id = 'legacy-session', extra = '') => `<main data-session-id="${id}"><div class="chat-messages">${article('<p>older client question</p>', 'user', 'legacy-u')}${article('<p>older client answer</p>', 'assistant', 'legacy-a')}</div><textarea aria-label="Send a message"></textarea><button aria-label="Send">Send</button>${extra}</main>`;
+deepSeekTest('deepseek-legacy-session-identity-and-messages', legacyDeepSeek(), (r, assert) => {
+  assert(r.state.stableIdentity && r.state.editor && r.state.canRead, JSON.stringify(r.state));
+  assert(r.transcript.map(m=>m.role).join(',') === 'user,assistant', 'legacy message roles');
+  assert(r.transcript.map(m=>m.segments[0].text).join('|') === 'older client question|older client answer', 'legacy content');
+});
+deepSeekTest('deepseek-legacy-file-page-uses-bound-provider', legacyDeepSeek(), (r, assert) => {
+  assert(r.state.stableIdentity && r.state.identity.endsWith('|conversation:legacy-session'), JSON.stringify(r.state));
+  assert(r.state.editor && r.transcript.length === 2, 'file layout supports scoped legacy transcript');
+}, { location: { protocol:'file:',host:'',href:'file:///D:/custom/index.html',pathname:'/D:/custom/index.html',hash:'' } });
+deepSeekTest('deepseek-legacy-route-identity', legacyDeepSeek().replace(' data-session-id="legacy-session"',''), (r, assert) => {
+  assert(r.state.stableIdentity && r.state.editor, 'explicit route identity accepted');
+}, { location: { protocol:'http:',host:'127.0.0.1:12345',href:'http://127.0.0.1:12345/#/chat/legacy-session',pathname:'/',hash:'#/chat/legacy-session' } });
+deepSeekTest('deepseek-legacy-unknown-identity-rejected', legacyDeepSeek().replace(' data-session-id="legacy-session"',''), (r, assert) => {
+  assert(!r.state.stableIdentity && !r.state.editor && !r.helpers.click('send','',null,r.state.identity,''), 'no title-based write guess');
+});
+deepSeekTest('deepseek-legacy-conflicting-identities-rejected', legacyDeepSeek('one','<div data-conversation-id="two"></div>'), (r, assert) => {
+  assert(!r.state.stableIdentity && !r.state.editor && r.transcript.length === 0, 'conflicting identities rejected');
+});
+deepSeekTest('deepseek-legacy-multiple-conversations-rejected', legacyDeepSeek('one') + legacyDeepSeek('two'), (r, assert) => {
+  assert(!r.state.stableIdentity && !r.state.editor && !r.state.canRead, 'ambiguous main panels rejected');
+});
+deepSeekTest('deepseek-legacy-original-draft-protected', legacyDeepSeek().replace('</textarea>','original draft</textarea>'), (r, assert) => {
+  assert(r.state.draft === 'original draft', 'actual old draft read');
+  assert(!r.helpers.insert('test',r.state.identity) && document.querySelector('textarea').value === 'original draft', 'old draft not overwritten');
+});
+deepSeekTest('deepseek-legacy-source-change-rejected', legacyDeepSeek(), (r, assert) => {
+  document.querySelector('main').dataset.sessionId = 'other'; let clicks = 0;
+  document.querySelector('button').addEventListener('click',()=>clicks++);
+  assert(!r.helpers.click('send','',null,r.state.identity,'') && clicks === 0, 'source changed before send');
+});
+deepSeekTest('deepseek-modern-slot-name-not-required', deepSeekPanel().replace('data-slot="main.conversation"','data-slot="older-main"'), (r, assert) => {
+  assert(r.state.stableIdentity && r.state.editor, 'semantic markers independent of slot naming');
+});
+deepSeekTest('deepseek-client-renderer-error-is-not-connected', deepSeekPanel('<div data-slot="conversation.session"><div data-slot-error></div></div>'), (r, assert) => {
+  assert(r.state.pageError && !r.state.stableIdentity && !r.state.editor && !r.state.canRead, 'native page failure is not mistaken for a working bridge');
+  assert(!r.helpers.click('send','',null,r.state.identity,''), 'broken conversation cannot submit');
+});
+deepSeekTest('deepseek-mixed-era-panel-and-message-layout', deepSeekPanel('<div class="chat-messages">' + article('<p>historical message markup</p>') + '</div>'), (r, assert) => {
+  assert(r.state.stableIdentity && r.state.editor, 'session panel still bound');
+  assert(r.transcript.length === 1 && r.transcript[0].segments[0].text === 'historical message markup', 'semantic message roles work without flow markers');
+});
 deepSeekTest('deepseek-panel-identity-and-editor-scope', deepSeekSelected('session-actual') + deepSeekPanel('', 'session-actual', '<div data-composer-input contenteditable="true">source draft</div>') + '<textarea>other draft</textarea><button aria-label="Send">Other send</button>', (r, assert) => {
   assert(r.state.stableIdentity && r.state.identity === 'dsh-app://app/|conversation:session-actual' && r.state.canRead, JSON.stringify(r.state));
   assert(r.state.editor && r.state.draft === 'source draft', 'main panel editor selected');
@@ -231,9 +274,9 @@ deepSeekTest('deepseek-ambiguous-editor-disables-actions', deepSeekPanel('', 'se
   assert(r.state.stableIdentity && r.state.canRead && !r.state.editor, JSON.stringify(r.state));
   assert(!r.helpers.click('send', '', null, r.state.identity, ''), 'ambiguous editor cannot submit');
 });
-test('deepseek-mapping-requires-app-origin', deepSeekPanel(deepSeekFlows), (r, assert) => {
-  assert(!r.state.stableIdentity && r.transcript.length === 0, 'non-DeepSeek origin rejected');
-}, { provider: 'DeepSeek' });
+test('deepseek-mapping-rejects-remote-origin', deepSeekPanel(deepSeekFlows), (r, assert) => {
+  assert(!r.state.stableIdentity && r.transcript.length === 0, 'remote origin rejected even with matching markers');
+}, { provider: 'DeepSeek', location: {protocol:'https:',host:'example.invalid',href:'https://example.invalid/',pathname:'/',hash:''} });
 const codexId = '01234567-89ab-cdef-0123-456789abcdef';
 const codexThread = '<div data-thread-find-target="conversation">' + article('<p>thread body</p>', 'assistant', 'codex-message') + '</div>';
 const codexComposer = (id = codexId, placement = 'thread', editors = '<textarea aria-label="Prompt"></textarea>') =>
@@ -306,8 +349,9 @@ test('codex-marker-requires-app-origin', codexThread + codexComposer(), (r, asse
 });
 const style = '<style>body{font:16px sans-serif}.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}.whitespace-pre-wrap,code{white-space:pre-wrap}textarea{width:400px;height:50px}[contenteditable="true"]{width:400px;min-height:30px}article{padding:5px}table{border-collapse:collapse}td,th{padding:5px}</style>';
 const pages = cases.map((c, i) => {
-  const fixtureLocation = c.deepSeek ? JSON.stringify({ protocol: 'dsh-app:', host: 'app', href: 'dsh-app://app/', pathname: '/', hash: '' }) : c.codex ? JSON.stringify({ protocol: 'app:', host: '-', href: 'app://-/index.html', pathname: '/index.html', hash: '' }) : 'window.location';
-  const run = `(location=>{let checks=0;try{const result=${script}\nreturn {transcript:transcript(${JSON.stringify(c.provider || 'ChatGPT')}),state:state('GPT Test Medium'),helpers:{insert,click}};})(),verify=(${c.verify});verify(result,(ok,msg)=>{checks++;if(!ok)throw Error(msg)});parent.postMessage({fixture:${i},name:${JSON.stringify(c.name)},passed:true,checks},parent.location.origin)}catch(e){parent.postMessage({fixture:${i},name:${JSON.stringify(c.name)},passed:false,error:String(e)},parent.location.origin)}})(${fixtureLocation});`;
+  const fixtureLocation = c.location ? JSON.stringify(c.location) : c.deepSeek ? JSON.stringify({ protocol: 'dsh-app:', host: 'app', href: 'dsh-app://app/', pathname: '/', hash: '' }) : c.codex ? JSON.stringify({ protocol: 'app:', host: '-', href: 'app://-/index.html', pathname: '/index.html', hash: '' }) : 'window.location';
+  const boundScript = script.replace('(() => {', '(() => { const clientProvider = ' + JSON.stringify(c.provider || 'ChatGPT') + ';');
+  const run = `(location=>{let checks=0;try{const result=${boundScript}\nreturn {transcript:transcript(${JSON.stringify(c.provider || 'ChatGPT')}),state:state('GPT Test Medium'),helpers:{insert,click}};})(),verify=(${c.verify});verify(result,(ok,msg)=>{checks++;if(!ok)throw Error(msg)});parent.postMessage({fixture:${i},name:${JSON.stringify(c.name)},passed:true,checks},parent.location.origin)}catch(e){parent.postMessage({fixture:${i},name:${JSON.stringify(c.name)},passed:false,error:String(e)},parent.location.origin)}})(${fixtureLocation});`;
   return '<!doctype html><meta charset="utf-8"><title>Formatting fixture</title>' + style + c.html + '<script>' + run.replace(/<\/script/gi, '<\\/script') + '</script>';
 });
 const harness = `<!doctype html><meta charset="utf-8"><title>VitroHUD extraction checks</title><style>body{font:16px sans-serif;padding:20px;background:#18211e;color:#eee}iframe{width:700px;height:700px;border:0}.pass{color:#b9dbac}.fail{color:#ffb8ac}</style><h1>VitroHUD extraction checks</h1><p id="summary">Running ${cases.length} fixtures…</p><pre id="results"></pre><div id="fixtures"></div><script>const pages=${JSON.stringify(pages).replace(/<\/script/gi, '<\\/script')},results=[];addEventListener('message',e=>{if(e.origin!==location.origin||!Number.isInteger(e.data?.fixture))return;const i=e.data.fixture;if(e.source!==document.querySelectorAll('iframe')[i]?.contentWindow)return;results[i]=e.data;document.getElementById('results').textContent=JSON.stringify(results.filter(Boolean),null,2);const done=results.filter(Boolean);document.getElementById('summary').textContent=done.filter(x=>x.passed).length+'/'+pages.length+' passed; '+done.filter(x=>!x.passed).length+' failed; '+done.reduce((a,x)=>a+(x.checks||0),0)+' assertions';});pages.forEach(p=>{const f=document.createElement('iframe');f.srcdoc=p;document.getElementById('fixtures').append(f)});</script>`;

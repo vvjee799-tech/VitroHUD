@@ -1,6 +1,14 @@
 # 兼容性与验证范围
 
-VitroHUD 当前版本为 `0.1.17` Public Beta。本页区分历史客户端实测与可重复运行的自动检查；自动检查通过不代表任意客户端版本都可用。
+VitroHUD 当前版本为 `0.1.18` Public Beta。本页区分历史客户端实测与可重复运行的自动检查；自动检查通过不代表任意客户端版本都可用。
+
+## 0.1.18 自动发现与能力适配
+
+- 客户端路径从运行进程、用户和系统安装登记、常见安装目录、版本子目录、开始菜单及桌面快捷方式自动发现并记忆；未登记且无快捷方式的便携版首次正常运行后即可自动记录路径。全流程不提供手动选择 exe 的入口，不按客户端发布版本号拦截。
+- 回环端口始终校验原客户端进程归属，配置目录变化时可从该进程的实际监听端口重新发现桥接；不会扫描或连接其他进程的端口。
+- 页面样例覆盖 DeepSeek 现有布局、历史会话标记、文本输入框、本机 HTTP/文件页面及混合消息布局，同时检查原草稿、会话冲突、远程页面拒绝和原客户端页面加载失败。样例使用人工构造的页面，不是全部旧版客户端的真实验收。
+- 2026-11-02 本机检查确认：未输入程序路径，自动找到了 D 盘非默认目录下的 DeepSeek（可执行文件产品版本 `0.2.0.0`）并启动后台桥接。该安装的会话页面随后报 `text.replace is not a function`，消息区域加载失败；本轮据此验证页面错误识别，**不计为这个版本的完整收发通过**。未修改该客户端的草稿或历史数据。
+- 新增只读诊断：`probe\VitroHUD.Probe.exe DeepSeek --diagnose-client`。只输出客户端是否识别、运行进程数及回环监听数，不输出会话内容、凭据或完整安装路径。
 
 ## DeepSeek 后台收发补充实测
 
@@ -32,7 +40,9 @@ VitroHUD 当前版本为 `0.1.17` Public Beta。本页区分历史客户端实�
 ```powershell
 dotnet run --project tests/GlassInteraction/GlassInteraction.csproj -c Release
 dotnet run --project tests/ProviderTabs/ProviderTabs.csproj -c Release
+dotnet run --project tests/ClientDiscovery/ClientDiscovery.csproj -c Release
 node --test tests/claude-bridge.test.mjs
+node tests/run-page-fixtures.mjs
 .\build.ps1 -Dotnet (Get-Command dotnet).Source
 ```
 
@@ -40,6 +50,8 @@ node --test tests/claude-bridge.test.mjs
 | --- | --- | --- |
 | GlassInteraction | 拉手与胶囊拖动、吸附、取消、圆角、动画时间线和配置解析 | 纯逻辑断言，不判断实际桌面动画手感或多屏 DPI |
 | ProviderTabs | 旧标签交互状态机回归 | 保留历史逻辑覆盖；当前界面使用侧边入口 |
+| ClientDiscovery | 程序元数据识别、不同目录/版本子目录/改名便携版、快捷方式及端口身份 | 合成旧版本号的静态程序文件与临时快捷方式，不启动真实客户端 |
+| Page compatibility | 现代与历史页面结构、消息提取、会话/草稿保护及页面加载失败 | 独立无界面 Chrome，仅访问本机合成样例，不操控用户浏览器；可用 `CHROME_PATH` 指定 Chrome |
 | Claude bridge | 内存模拟的会话路由、原草稿、忙碌状态、Nonce、过期请求、单次发送回执、模型回读和监听清理 | 不连接真实 Claude，也不向真实会话发送 |
 | Probe self-test | 来源、协议、路径、端口归属、配置迁移和格式解析守卫 | 构建脚本自动运行；使用测试数据、临时目录及回环监听器 |
 

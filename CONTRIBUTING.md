@@ -21,7 +21,9 @@
 ```powershell
 dotnet run --project tests/GlassInteraction/GlassInteraction.csproj --configuration Release
 dotnet run --project tests/ProviderTabs/ProviderTabs.csproj --configuration Release
+dotnet run --project tests/ClientDiscovery/ClientDiscovery.csproj --configuration Release
 node --test tests/claude-bridge.test.mjs
+node tests/run-page-fixtures.mjs
 ```
 
 PowerShell 中每条命令都应以退出码 `0` 结束。ProviderTabs 保留了旧标签交互逻辑的回归检查，不能据此断言当前界面仍使用顶部标签栏。构建自检还使用临时目录和本机回环监听器检查配置迁移、协议与端口归属，不向真实会话发送消息。

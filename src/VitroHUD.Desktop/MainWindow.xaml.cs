@@ -103,7 +103,7 @@ public sealed partial class MainWindow : Window
         };
         Root.PreviewKeyDown += (_, e) => { if (e.Key == VirtualKey.Escape) { if (compactDrag.Pressed) CancelCompactDrag(); else if (clientPlacement.Pressed) CancelClientGesture(); else if (clientMenuOpen) clientFlyout?.Hide(); else Collapse(); e.Handled = true; } };
         Root.SizeChanged += (_, _) => SyncInputRegions();
-        Root.Loaded += async (_, _) => { ready = true; LayoutClientHandle(); SyncWindowGeometry(); UpdateClientHandle(); ApplyAppearance(); timer.Start(); await PollAsync(); };
+        Root.Loaded += async (_, _) => { ready = true; LayoutClientHandle(); SyncWindowGeometry(); UpdateClientHandle(); ApplyAppearance(); timer.Start(); _ = Task.Run(BackgroundLauncher.DiscoverInstalledClients); await PollAsync(); };
         Closed += (_, _) => { StopCompactAnimation(); StopClientHandle(); ready = false; timer.Stop(); saveTimer.Stop(); noticeTimer.Stop(); SaveSettings(); SystemBackdrop = null; tray.Dispose(); applicationIcon.Dispose(); NativeWindow.UnregisterHotKey(hwnd, 72); NativeWindow.RemoveWindowSubclass(hwnd, subclass, 1); foreach (var b in brokers.Values) b.Dispose(); };
     }
     private BrokerClient Broker => brokers.TryGetValue(settings.Provider, out var b) ? b : brokers[settings.Provider] = new(settings.Provider);
@@ -401,7 +401,7 @@ public sealed partial class MainWindow : Window
     private async void BackgroundConnection_Click(object sender, RoutedEventArgs e)
     {
         Root.ContextFlyout.Hide();
-        var provider = settings.Provider; var path = BackgroundLauncher.FindExecutable(provider);
+        var provider = settings.Provider;
         if (provider == "ChatGPT")
         {
             var link = new TextBox { PlaceholderText = "粘贴现有会话链接或完整会话 ID", TextWrapping = TextWrapping.Wrap, MinWidth = 310 };
@@ -461,16 +461,25 @@ public sealed partial class MainWindow : Window
             ShowNotice("Claude 原会话已连接，可最小化后继续收发及选择模型。", InfoBarSeverity.Informational);
             await PollAsync(); return;
         }
-        if (path == null) { ShowNotice("未找到该官方客户端，请先安装并打开一次。", InfoBarSeverity.Warning); return; }
+        var existing = await Broker.RequestAsync(new("read"));
+        if (existing.Ok && existing.Snapshot?.BackgroundConnected == true)
+        {
+            ShowNotice("当前客户端已连接后台模式，无需重复启动。", InfoBarSeverity.Informational);
+            await PollAsync(existing); return;
+        }
+        var path = await Task.Run(() => BackgroundLauncher.FindExecutable(provider));
+        if (path == null) { ShowNotice("尚未自动定位客户端。请先正常打开客户端一次，侧栏会自动识别并记住路径；无需手动选择程序。", InfoBarSeverity.Warning); return; }
         var dialog = new ContentDialog
         {
             XamlRoot = Root.XamlRoot, Title = "连接 " + provider + " 后台会话", PrimaryButtonText = "启动后台模式", CloseButtonText = "取消",
-            Content = "先保存工作并从原客户端菜单退出，再点击启动。它会使用原账号和会话重新打开，并启用仅本机可访问的页面连接。打开目标会话后，侧栏会按实际能力启用后台读取、模型选择和发送。此模式在本次客户端退出后结束。"
+            Content = "已自动识别客户端。先保存工作并从原客户端菜单退出，再启动后台模式。它会使用原账号和会话重新打开，并启用仅本机可访问的页面连接；打开目标会话后按实际能力启用功能，不限制客户端版本号。"
         };
         if (await dialog.ShowAsync() != ContentDialogResult.Primary) return;
+        path = await Task.Run(() => BackgroundLauncher.FindExecutable(provider));
+        if (path == null) { ShowNotice("客户端主程序已移动或不可访问。请正常打开一次客户端，侧栏会重新识别路径。", InfoBarSeverity.Warning); return; }
         if (BackgroundLauncher.IsRunning(path)) { ShowNotice("原客户端仍在运行，请先从其菜单退出，再连接后台会话。", InfoBarSeverity.Warning); return; }
         try { BackgroundLauncher.Start(path); ShowNotice("正在连接后台会话，请在原客户端打开目标会话。", InfoBarSeverity.Informational); }
-        catch { ShowNotice("无法启动官方客户端，请检查安装状态。", InfoBarSeverity.Warning); }
+        catch { ShowNotice("已识别客户端，但未能启动后台模式。请确认原客户端已完全退出且主程序可以运行。", InfoBarSeverity.Warning); }
     }
     private void ClickThrough_Click(object sender, RoutedEventArgs e) { Root.ContextFlyout.Hide(); NativeWindow.PassThrough(hwnd, true); }
     private void Collapse_Click(object sender, RoutedEventArgs e) => Collapse();

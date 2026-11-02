@@ -1,18 +1,63 @@
 (() => {
 const label = e => (e.getAttribute('aria-label') || e.innerText || e.getAttribute('title') || '').replace(/\s+/g, ' ').trim();
 const visible = e => { const r = e.getBoundingClientRect(), s = getComputedStyle(e); return r.width > 0 && r.height > 0 && s.display !== 'none' && s.visibility !== 'hidden'; };
-const isDeepSeekPage = () => location.protocol === 'dsh-app:' && location.host === 'app';
+const isDeepSeekPage = () => {
+  if (typeof clientProvider === 'undefined') return location.protocol === 'dsh-app:' && location.host === 'app';
+  if (clientProvider !== 'DeepSeek') return false;
+  try {
+    const url = new URL(location.href);
+    return !url.username && !url.password && (url.protocol === 'dsh-app:' && url.hostname === 'app' ||
+      url.protocol === 'app:' && ['app','localhost','dsh','-'].includes(url.hostname) ||
+      url.protocol === 'file:' && !url.hostname || url.protocol === 'http:' && ['127.0.0.1','localhost','[::1]'].includes(url.hostname));
+  } catch { return false; }
+};
 const isCodexPage = () => location.protocol === 'app:' && location.host === '-';
 const deepSeekBinding = () => {
   if (!isDeepSeekPage()) return null;
-  const panels = Array.from(document.querySelectorAll('[data-slot="main.conversation"] [data-conversation-content][data-conversation-session]'));
-  if (panels.length !== 1) return null;
-  const panel = panels[0], id = panel.getAttribute('data-conversation-session');
-  if (!id || !id.trim()) return null;
-  const selected = Array.from(document.querySelectorAll('[role="treeitem"][aria-selected="true"][data-row-key^="session:"]'));
-  if (selected.length > 1 || selected.length === 1 && selected[0].getAttribute('data-row-key').slice('session:'.length) !== id) return null;
-  const editors = Array.from(panel.querySelectorAll('[data-composer-input][contenteditable="true"]')).filter(visible);
-  return { panel, id, editor: editors.length === 1 ? editors[0] : null };
+  const validId = id => typeof id === 'string' && id.trim().length > 0 && id.length <= 256 && !/^(?:new|home|index|default)$/i.test(id);
+  const identitySelector = '[data-conversation-session],[data-conversation-id],[data-session-id],[data-chat-id]';
+  const ids = e => ['data-conversation-session','data-conversation-id','data-session-id','data-chat-id'].map(k=>e.getAttribute(k)).filter(validId);
+  const editable = root => Array.from(root.querySelectorAll('textarea,[contenteditable="true"]')).filter(e => visible(e) &&
+    !e.closest('nav,[role="navigation"],[role="dialog"],[role="menu"]') && !/search|搜索/i.test([e.getAttribute('aria-label'),e.getAttribute('placeholder'),e.className].join(' ')));
+  const panels = Array.from(document.querySelectorAll('[data-conversation-content]')).filter(visible);
+  let panel, id, legacy = false;
+  if (panels.length) {
+    if (panels.length !== 1) return null;
+    panel = panels[0]; id = panel.getAttribute('data-conversation-session');
+    if (!validId(id)) return null; // A partial modern layout must not fall through to a weaker guess.
+    if (panel.querySelector('[data-slot="conversation.session"] [data-slot-error]')) return null;
+  } else {
+    legacy = true;
+    const regions = '.chat-messages,.conversation-messages,.messages-container,[role="log"],[role="feed"]';
+    const candidates = Array.from(document.querySelectorAll(identitySelector)).filter(e => visible(e) &&
+      !e.closest('nav,aside,header,[role="navigation"],[role="treeitem"],[data-message-author-role],[data-role="user"],[data-role="assistant"]') &&
+      (e.matches(regions) || e.querySelector(regions)) && editable(e).length > 0);
+    const top = candidates.filter(e => !candidates.some(other => other !== e && other.contains(e)));
+    if (top.length > 1) return null;
+    if (top.length === 1) {
+      panel = top[0]; const identities = new Set([panel,...panel.querySelectorAll(identitySelector)].flatMap(ids));
+      if (identities.size !== 1) return null;
+      id = [...identities][0];
+    } else {
+      const route = (location.pathname + location.hash).match(/(?:^|\/)(?:c|chat|chats|conversation|conversations|session|sessions)\/([^/?#]+)/i);
+      if (!route || !validId(route[1])) return null;
+      id = route[1];
+      const mains = Array.from(document.querySelectorAll('main,[role="main"]')).filter(e => visible(e) && e.querySelector(regions) && editable(e).length === 1);
+      if (mains.length !== 1) return null;
+      panel = mains[0];
+      const identities = new Set([...panel.querySelectorAll(identitySelector)].flatMap(ids));
+      if ([...identities].some(value => value !== id)) return null;
+    }
+  }
+  if (legacy) {
+    const route = (location.pathname + location.hash).match(/(?:^|\/)(?:c|chat|chats|conversation|conversations|session|sessions)\/([^/?#]+)/i);
+    if (route && validId(route[1]) && route[1] !== id) return null;
+  }
+  const selected = Array.from(document.querySelectorAll('[role="treeitem"][aria-selected="true"]')).map(e =>
+    e.getAttribute('data-row-key')?.replace(/^session:/,'') || ids(e)[0]).filter(Boolean);
+  if (selected.length > 1 || selected.length === 1 && selected[0] !== id) return null;
+  const editors = legacy ? editable(panel) : Array.from(panel.querySelectorAll('[data-composer-input][contenteditable="true"]')).filter(visible);
+  return { panel, id, legacy, editor: editors.length === 1 ? editors[0] : null };
 };
 const codexBinding = () => {
   if (!isCodexPage()) return null;
@@ -78,7 +123,7 @@ const pageIdentityInfo = root => {
   const canonical = match && !/^(?:new|s|home|index|default)$/i.test(match[1]);
   return { identity: canonical ? location.href : location.href + '|' + document.title, stable: !!canonical };
 };
-const state = m => { const input = editor(), modelButton = model(m), root = conversationRoot(), binding = pageIdentityInfo(root); return { identity: binding.identity, stableIdentity: binding.stable, url: location.href, title: document.title, canRead: !!root, draft: draft(input), editor: enabled(input), send: !!send(), stop: enabled(stop()), model: label(modelButton || document.createElement('span')), modelEnabled: enabled(modelButton) }; };
+const state = m => { const input = editor(), modelButton = model(m), root = conversationRoot(), binding = pageIdentityInfo(root); return { identity: binding.identity, stableIdentity: binding.stable, url: location.href, title: document.title, canRead: !!root, draft: draft(input), editor: enabled(input), send: !!send(), stop: enabled(stop()), model: label(modelButton || document.createElement('span')), modelEnabled: enabled(modelButton), pageError: isDeepSeekPage() && !!document.querySelector('[data-conversation-content] [data-slot="conversation.session"] [data-slot-error]') }; };
 const normalizeDraft = t => t.replace(/\r\n/g, '\n').replace(/\n+$/, '');
 let insertionAttempted = false;
 const insert = (text, expectedIdentity) => {
@@ -151,6 +196,7 @@ const transcript = provider => {
   const binding = deepSeek ? deepSeekBinding() : null;
   const codex = !deepSeek && isCodexPage() ? codexBinding() : null;
   if (deepSeek && !binding) return [];
+  const flowLayout = deepSeek && !!binding.panel.querySelector('[data-chat-flow-kind]');
   if (!deepSeek && isCodexPage() && document.querySelector('[data-codex-composer-root]') && !codex) return [];
   const input = editor();
   const selector = messageSelector;
@@ -175,7 +221,7 @@ const transcript = provider => {
     }
     return headings.length === 1 ? headings[0] : '';
   };
-  const candidates = deepSeek ? [] : Array.from((codex?.transcriptRoot || document).querySelectorAll(selector)).filter(e => visible(e) && !e.closest('nav,header,button,[role="button"],[contenteditable="true"],[role="navigation"],[role="toolbar"],[role="menu"],[role="menubar"]'));
+  const candidates = flowLayout ? [] : Array.from((binding?.panel || codex?.transcriptRoot || document).querySelectorAll(selector)).filter(e => visible(e) && !e.closest('nav,header,button,[role="button"],[contenteditable="true"],[role="navigation"],[role="toolbar"],[role="menu"],[role="menubar"]'));
   const allCandidates = new Set(candidates);
   const set = new Set(candidates.filter(e => {
     const direct = elementRole(e);
@@ -195,10 +241,11 @@ const transcript = provider => {
     return !ancestor;
   });
   const roots = allRoots.slice(-100), rootOffset = allRoots.length - roots.length;
-  const conversation = deepSeek || roots.length ? null : codex?.transcriptRoot || Array.from(document.querySelectorAll('.thread-scroll-container,[role="feed"],[role="log"]')).find(e => visible(e) && !e.closest('nav,header,[role="navigation"],[role="toolbar"],[role="menu"]'));
+  const conversation = flowLayout || roots.length ? null : codex?.transcriptRoot || Array.from((binding?.panel || document).querySelectorAll('.chat-messages,.conversation-messages,.messages-container,.thread-scroll-container,[role="feed"],[role="log"]')).find(e => visible(e) && !e.closest('nav,header,[role="navigation"],[role="toolbar"],[role="menu"]'));
+  if (deepSeek && !flowLayout && !roots.length && !conversation) return [];
   if (!deepSeek && !roots.length && !conversation && !input) return [];
   const fallback = !deepSeek && !roots.length && !conversation;
-  const root = conversation || document.body;
+  const root = conversation || binding?.panel || document.body;
   const inputRect = fallback && input ? input.getBoundingClientRect() : null;
   const out = [], budget = { nodes: 0, chars: 0 };
   const isExhausted = () => budget.nodes >= 12000 || budget.chars >= 160000;
@@ -376,8 +423,8 @@ const transcript = provider => {
     }
     out.push(...chronological);
   };
-  if (deepSeek) {
-    const flowNodes = Array.from(binding.panel.querySelectorAll('[data-chat-flow] [data-chat-flow-kind]')).filter(e => visible(e) && !e.closest('[hidden],[aria-hidden="true"],[inert]'));
+  if (flowLayout) {
+    const flowNodes = Array.from(binding.panel.querySelectorAll('[data-chat-flow-kind]')).filter(e => visible(e) && !e.closest('[hidden],[aria-hidden="true"],[inert]'));
     const ids = new Set(), groups = [];
     for (const e of flowNodes) {
       const kind = e.getAttribute('data-chat-flow-kind');

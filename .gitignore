@@ -21,6 +21,7 @@
 *.key
 chatgpt-connection.json
 claude-connection.json
+client-paths.json
 settings.local.json
 .vitrohud-bridge-*/
 
